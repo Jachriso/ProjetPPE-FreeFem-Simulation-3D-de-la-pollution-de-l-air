@@ -1,0 +1,96 @@
+load "msh3"
+load "iovtk"
+
+mesh3 Th = readmesh3("cross_intersection.msh"); // ton maillage Gmsh
+
+// Labels (à aligner avec tes Physical Groups Gmsh)
+int inlet=1, outlet=2, side=3, top=4, ground=5, buildings=6;
+
+// Données physiques / numériques
+real H = 20.0;
+real W = 21.0;
+
+real Uref = 5.0;     // m/s
+real zref = 10.0;    // m
+real z0   = 1.0;     // m (urbain, simple)
+real nu   = 5e-3;    // Run 1: viscosité effective (stabilité)
+
+real dt = 0.1;
+int nT = 1000;
+
+Vh uc, vc, w;
+
+// Profil inlet U(z) (direction +x)
+func real Uin(real z) {
+  real zz = max(z, 1e-6); // évite log(0)
+  return Uref * log((zz + z0)/z0) / log((zref + z0)/z0);
+}
+
+// Mini element (stable)
+fespace Vh(Th, [P1b,P1b,P1b]);
+fespace Qh(Th, P1);
+
+Vh [u,v,w],[uOld,vOld,wOld],[phi1,phi2,phi3];
+Qh p,q;
+
+macro Div(u,v,w) (dx(u)+dy(v)+dz(w)) // EOM
+
+// Convection semi-Lagrangienne (simple, robuste)
+func real[int] Xback(real[int] X) {
+  real x=X[0], y=X[1], z=X[2];
+  real ux = uOld(x,y,z);
+  real vy = vOld(x,y,z);
+  real wz = wOld(x,y,z);
+  real[int] Y(3);
+  Y[0]= x - dt*ux;
+  Y[1]= y - dt*vy;
+  Y[2]= z - dt*wz;
+  return Y;
+}
+
+// Problème NS semi-implicite (diffusion+pression implicites, convection via uOld∘Xback)
+problem NS([u,v,w,p],[phi1,phi2,phi3,q])
+  = int3d(Th)(
+      (u*phi1 + v*phi2 + w*phi3)/dt
+    + nu*( dx(u)*dx(phi1)+dy(u)*dy(phi1)+dz(u)*dz(phi1)
+         + dx(v)*dx(phi2)+dy(v)*dy(phi2)+dz(v)*dz(phi2)
+         + dx(w)*dx(phi3)+dy(w)*dy(phi3)+dz(w)*dz(phi3) )
+    - p*Div(phi1,phi2,phi3)
+    - q*Div(u,v,w)
+    )
+  - int3d(Th)(
+      ( uc*phi1
+      + vc*phi2
+      + wc*phi3 )/dt
+    )
+  // Fix pression (sinon p est défini à une constante près)
+  + on(outlet, p=0)
+
+  // Inlet : u=U(z), v=w=0
+  + on(inlet, u=Uin(z), v=0, w=0)
+
+  // Sol + façades immeubles : no-slip
+  + on(ground,   u=0, v=0, w=0)
+  + on(buildings,u=0, v=0, w=0)
+  ;
+
+// Init
+[uOld,vOld,wOld] = [0,0,0];
+p = 0;
+
+for (int it=0; it<nT; ++it) {
+  uc = convect([uOld, vOld, wOld, -dt, uOld]);
+  vc = convect([uOld, vOld, wOld, -dt, vOld]);
+  wc = convect([uOld, vOld, wOld, -dt, wOld]);
+
+  NS;
+  [uOld,vOld,wOld] = [u,v,w];
+
+  if (it%50==0) {
+    cout << "it="<<it
+         << " |U|_L2="<<sqrt(int3d(Th)(u^2+v^2+w^2))
+         << endl;
+
+    savevtk("out_"+it+".vtu", Th, [u,v,w], p, dataname="U p");
+  }
+}
