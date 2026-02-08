@@ -93,8 +93,3 @@ Les principales références scientifiques et techniques utilisées sont détail
 - Études sur la dispersion des polluants en rue canyon
 - Documentation officielle FreeFem++
 
----
-
-## 📄 Licence
-
-Projet académique – usage pédagogique et scientifique.
