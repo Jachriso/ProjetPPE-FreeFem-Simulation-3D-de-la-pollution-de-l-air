@@ -1,3 +1,6 @@
 EXAMPLES UTILISATION FREEFEM :
 -> https://www.youtube.com/watch?v=Dxg-4asWuj0&list=PL6fjYEpJFi7Wu9ZFlak7r0QgrF0aNi8H1
 -> https://github.com/TuxRiders/freefem-intro
+
+EXEMPLE : Hao Li reaction diffusion equation based topology optimization 3D fluid structure system FreeFEM
+-> https://www.youtube.com/watch?v=6NIZ0QI4RmY
