@@ -35,6 +35,6 @@ mesh3 Th = buildlayers(Th2, nlayers, zbound=[0, H]);
 // --- AFFICHAGE ---
 plot(Th, wait=1);
 
-// Définition des espaces de fonctions
-fespace Vh(Th,P1);
-Vh rho, vRho
+// Finite Element Space
+//fespace Vh(Th,P1); //P1 linaire
+//Vh rho, vRho
