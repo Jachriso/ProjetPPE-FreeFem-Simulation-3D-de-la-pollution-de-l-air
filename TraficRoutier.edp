@@ -3,7 +3,7 @@ real LT = 1.0;            // Longueur totale
 real lT = 0.5;            // Largeur de la zone d'étude 
 
 real lRoute = 0.05;       // Largeur de la route principale
-real lRue = 0.03;        // Largeur de la rue perpendiculaire
+real lRue = 0.03;         // Largeur de la rue perpendiculaire
 real LRue = 0.1;          // Profondeur de la rue perpendiculaire
 
 real xDebRue = 0.75;      // Début intersection
@@ -11,12 +11,6 @@ real xFinRue = xDebRue + lRue;
 
 real yBas = 0.2;          // Position y bas de route
 real yHaut = yBas + lRoute;
-
-// Bordures extérieures du quartier
-border b1(t=0, LT){x=t; y=0; label=1;}
-border b2(t=0, lT){x=LT; y=t; label=2;}
-border b3(t=LT, 0){x=t; y=lT; label=1;}
-border b4(t=lT, 0){x=0; y=t; label=2;}
 
 // --- DÉFINITION DE LA ROUTE (2D) ---
 // On tourne dans le sens inverse des aiguilles d'une montre pour garder l'intérieur à GAUCHE
@@ -41,6 +35,6 @@ mesh3 Th = buildlayers(Th2, nlayers, zbound=[0, H]);
 // --- AFFICHAGE ---
 plot(Th, wait=1);
 
-// Finite Element Space
-//fespace Vh(Th,P1); //P1 linaire
-// Vh rho, vRho
+// Définition des espaces de fonctions
+//fespace Vh(Th,P1);
+//Vh rho, vRho

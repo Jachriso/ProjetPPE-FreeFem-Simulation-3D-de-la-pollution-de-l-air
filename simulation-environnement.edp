@@ -1,0 +1,40 @@
+// --- DIMENSIONS (en km) ---
+real LT = 1.0;            // Longueur totale
+real lT = 0.5;            // Largeur de la zone d'étude 
+
+real lRoute = 0.05;       // Largeur de la route principale
+real lRue = 0.03;         // Largeur de la rue perpendiculaire
+real LRue = 0.1;          // Profondeur de la rue perpendiculaire
+
+real xDebRue = 0.75;      // Début intersection
+real xFinRue = xDebRue + lRue; 
+
+real yBas = 0.2;          // Position y bas de route
+real yHaut = yBas + lRoute;
+
+// --- DÉFINITION DE LA ROUTE (2D) ---
+// On tourne dans le sens inverse des aiguilles d'une montre pour garder l'intérieur à GAUCHE
+border Haut(t=LT, 0){x=t; y=yHaut; label=3;} 
+border EntreeG(t=yHaut, yBas){x=0; y=t; label=1;} 
+border BasG(t=0, xDebRue){x=t; y=yBas; label=3;}
+border RueG(t=0, LRue){x=xDebRue; y=yBas-t; label=3;} 
+border RueSortie(t=xDebRue, xFinRue){x=t; y=yBas-LRue; label=2;} // SORTIE B
+border RueD(t=0, LRue){x=xFinRue; y=(yBas-LRue)+t; label=3;}
+border BasD(t=xFinRue, LT){x=t; y=yBas; label=3;}
+border SortieD(t=yBas, yHaut){x=LT; y=t; label=2;} // SORTIE A
+
+// --- GÉNÉRATION DU MAILLAGE 2D ---
+mesh Th2 = buildmesh(Haut(80) + EntreeG(10) + BasG(30) + RueG(15) + RueSortie(15) + RueD(15) + BasD(30) + SortieD(10));
+
+// --- PASSAGE EN 3D (Extrusion) ---
+// On crée 10 couches sur une hauteur de 20 mètres (0.02 km)
+int nlayers = 10;
+real H = 0.02; 
+mesh3 Th = buildlayers(Th2, nlayers, zbound=[0, H]);
+
+// --- AFFICHAGE ---
+plot(Th, wait=1);
+
+// Définition des espaces de fonctions
+fespace Vh(Th,P1);
+Vh rho, vRho
