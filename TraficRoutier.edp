@@ -12,6 +12,12 @@ real xFinRue = xDebRue + lRue;
 real yBas = 0.2;          // Position y bas de route
 real yHaut = yBas + lRoute;
 
+// Bordures extérieures du quartier
+border b1(t=0, LT){x=t; y=0; label=1;}
+border b2(t=0, lT){x=LT; y=t; label=2;}
+border b3(t=LT, 0){x=t; y=lT; label=1;}
+border b4(t=lT, 0){x=0; y=t; label=2;}
+
 // --- DÉFINITION DE LA ROUTE (2D) ---
 // On tourne dans le sens inverse des aiguilles d'une montre pour garder l'intérieur à GAUCHE
 border Haut(t=LT, 0){x=t; y=yHaut; label=3;} 
@@ -36,5 +42,8 @@ mesh3 Th = buildlayers(Th2, nlayers, zbound=[0, H]);
 plot(Th, wait=1);
 
 // Définition des espaces de fonctions
-//fespace Vh(Th,P1);
-//Vh rho, vRho
+fespace Vh(Th,P1);
+Vh rho, vRho; // rho = densité de voitures, vRho = fonction de test
+Vh rhoAncien; // Mémoire de ce qu'il s'est passé avant
+Vh Source; // La source de pollution NO2
+

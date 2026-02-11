@@ -37,4 +37,4 @@ plot(Th, wait=1);
 
 // Définition des espaces de fonctions
 fespace Vh(Th,P1);
-Vh rho, vRho
+Vh rho, vRho 
