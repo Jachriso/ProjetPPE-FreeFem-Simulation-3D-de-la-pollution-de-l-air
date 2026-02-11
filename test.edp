@@ -1,0 +1,39 @@
+load "msh3"
+
+// 1. GEOMETRIE
+int n = 8; // On réduit un peu la densité pour fluidifier l'affichage
+mesh3 Th = cube(n, n, n, [20*x, 10*y, 20*z]);
+
+// 2. ESPACES DE CALCUL
+fespace Uh(Th, [P2, P2, P2, P1]); // On repasse en espace vectoriel pour la compacité
+Uh [u, v, w, p], [uh, vh, wh, ph];
+
+// 3. PARAMETRES
+real mu = 0.018; 
+real vIn = 5.0;
+
+// 4. RESOLUTION
+solve Vent3D([u, v, w, p], [uh, vh, wh, ph])
+    = int3d(Th)(
+          mu * ( dx(u)*dx(uh) + dy(u)*dy(uh) + dz(u)*dz(uh)
+               + dx(v)*dx(vh) + dy(v)*dy(vh) + dz(v)*dz(vh)
+               + dx(w)*dx(wh) + dy(w)*dy(wh) + dz(w)*dz(wh) )
+        - p * (dx(uh) + dy(vh) + dz(wh))
+        - ph * (dx(u) + dy(v) + dz(w))
+        + 1e-10 * p * ph
+    )
+    + on(4, u=vIn, v=0, w=0)        
+    + on(1, 2, 5, 6, u=0, v=0, w=0); 
+
+// 5. AFFICHAGE SIMPLIFIE (On affiche la PRESSION 'p' au lieu des flèches)
+// C'est plus simple : plus c'est rouge, plus la pression est forte.
+plot(p, 
+     fill=1, 
+     value=1, 
+     nbiso=15, 
+     wait=true, 
+     cmm="Affichage de la pression (rouge = entree, bleu = sortie)");
+
+// Si tu veux quand meme tenter la vitesse sans vecteurs, affiche la norme :
+real vNorm = sqrt(u^2 + v^2 + w^2);
+plot(u, fill=1, cmm="Vitesse horizontale u");
