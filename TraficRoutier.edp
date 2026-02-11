@@ -3,7 +3,7 @@ real LT = 1.0;            // Longueur totale
 real lT = 0.5;            // Largeur de la zone d'étude 
 
 real lRoute = 0.05;       // Largeur de la route principale
-real lRue = 0.03;        // Largeur de la rue perpendiculaire
+real lRue = 0.03;         // Largeur de la rue perpendiculaire
 real LRue = 0.1;          // Profondeur de la rue perpendiculaire
 
 real xDebRue = 0.75;      // Début intersection
