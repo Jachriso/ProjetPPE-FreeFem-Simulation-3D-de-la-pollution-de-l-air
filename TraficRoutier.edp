@@ -1,3 +1,6 @@
+load "msh3"
+load "medit"
+
 // --- DIMENSIONS (en km) ---
 real LT = 1.0;            // Longueur totale
 real lT = 0.5;            // Largeur de la zone d'étude 
@@ -42,7 +45,7 @@ mesh3 Th = buildlayers(Th2, nlayers, zbound=[0, H]);
 plot(Th, wait=1);
 
 // Définition des espaces de fonctions
-fespace Vh(Th,P1);
+/*fespace Vh(Th,P1);
 Vh rho=0, vRho; // rho = densité de voitures, vRho = fonction de test
 Vh rhoOld; // Mémoire de ce qu'il s'est passé avant
 Vh sourceS; // La source de pollution NO2
@@ -58,4 +61,6 @@ real c = 40.0;      // Paramètre de décroissance vitesse
 real a = 3.16e-5;   // Coeff pollution a (kg/veh/h)
 real b = 1e-6;      // Coeff pollution b (kg/veh/km)
 real fmax = 9408.0; // Débit max à l'entrée
+
+*/
 
