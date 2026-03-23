@@ -43,7 +43,19 @@ plot(Th, wait=1);
 
 // Définition des espaces de fonctions
 fespace Vh(Th,P1);
-Vh rho, vRho; // rho = densité de voitures, vRho = fonction de test
-Vh rhoAncien; // Mémoire de ce qu'il s'est passé avant
-Vh Source; // La source de pollution NO2
+Vh rho=0, vRho; // rho = densité de voitures, vRho = fonction de test
+Vh rhoOld; // Mémoire de ce qu'il s'est passé avant
+Vh sourceS; // La source de pollution NO2
+Vh vx, vy, vz=0;
+
+// --- PARAMÈTRES ET CONSTANTES ---
+real dt = 0.01;      // Pas de temps
+real k = 0.5;       // Diffusion du trafic
+real vmax = 50.0;   // Vitesse max
+real rhoMax = 800.0;// Densité max
+real c = 40.0;      // Paramètre de décroissance vitesse 
+
+real a = 3.16e-5;   // Coeff pollution a (kg/veh/h)
+real b = 1e-6;      // Coeff pollution b (kg/veh/km)
+real fmax = 9408.0; // Débit max à l'entrée
 
