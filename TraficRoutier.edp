@@ -1,6 +1,8 @@
 load "msh3"
 load "medit"
 
+real s0 = clock();
+
 // --- DIMENSIONS (en km) ---
 real LT = 1.0;            // Longueur totale
 real lT = 0.5;            // Largeur de la zone d'étude 
@@ -14,6 +16,7 @@ real xFinRue = xDebRue + lRue;
 
 real yBas = 0.2;          // Position y bas de route
 real yHaut = yBas + lRoute;
+
 
 // Bordures extérieures du quartier
 border b1(t=0, LT){x=t; y=0; label=1;}
@@ -32,35 +35,178 @@ border RueD(t=0, LRue){x=xFinRue; y=(yBas-LRue)+t; label=3;}
 border BasD(t=xFinRue, LT){x=t; y=yBas; label=3;}
 border SortieD(t=yBas, yHaut){x=LT; y=t; label=2;} // SORTIE A
 
-// --- GÉNÉRATION DU MAILLAGE 2D ---
-mesh Th2 = buildmesh(Haut(80) + EntreeG(10) + BasG(30) + RueG(15) + RueSortie(15) + RueD(15) + BasD(30) + SortieD(10));
 
-// --- PASSAGE EN 3D (Extrusion) ---
+// --- GÉNÉRATION DU MAILLAGE 2D ---
+mesh Sh2 = buildmesh(Haut(80) + EntreeG(10) + BasG(30) + RueG(15) + RueSortie(15) + RueD(15) + BasD(30) + SortieD(10));
+
+
+// --- PASSAGE EN 3D ---
 // On crée 10 couches sur une hauteur de 20 mètres (0.02 km)
 int nlayers = 10;
 real H = 0.02; 
-mesh3 Th = buildlayers(Th2, nlayers, zbound=[0, H]);
+
+mesh3 Sh = buildlayers(Sh2, nlayers, zbound=[0, H]);
 
 // --- AFFICHAGE ---
-plot(Th, wait=1);
+//plot(Th, wait=1);
 
-// Définition des espaces de fonctions
-fespace Vh(Th,P1);
-Vh rho=0, vRho; // rho = densité de voitures, vRho = fonction de test
-Vh rhoOld; // Mémoire de ce qu'il s'est passé avant
-Vh sourceS; // La source de pollution NO2
-Vh vx, vy, vz=0;
 
-// --- PARAMÈTRES ET CONSTANTES ---
-real dt = 0.01;      // Pas de temps
-real k = 0.5;       // Diffusion du trafic
+// --- DIRECTION DU TRAFIC PAR LAPLACE (en 2D sur Sh2) ---
+
+// On travaille en 2D ici car la direction horizontale est la même à toutes les hauteurs z (route plate). On projettera ensuite en 3D.
+fespace Wh2(Sh2, P2);      // P2 = éléments quadratiques, plus précis pour Laplace
+Wh2 psi, psih;
+
+problem Laplace(psi, psih) =
+    int2d(Sh2)(dx(psi)*dx(psih) + dy(psi)*dy(psih))  // -Δψ = 0  (forme faible)
+  + int1d(Sh2, 1)(psih)                               // source sur l'entrée
+  + on(2, psi=0)                                      // ψ=0 aux sorties (labels 2)
+  ;
+Laplace;  // Résolution immédiate (une seule fois, avant la boucle temporelle)
+
+// Vecteur unitaire de direction du trafic en chaque point (2D)
+// n1 = composante x, n2 = composante y
+fespace Vh2(Sh2, P1);
+
+Vh2 n1 = dx(psi) / sqrt(dx(psi)^2 + dy(psi)^2 + 1e-30);  // +1e-30 évite division par 0
+Vh2 n2 = dy(psi) / sqrt(dx(psi)^2 + dy(psi)^2 + 1e-30);
+
+
+// --- ESPACES DE FONCTIONS 3D POUR LA DENSITE ---
+
+fespace Vh(Sh, P1);  // P1 = éléments finis linéaires par morceau
+
+Vh rho;         // Densité de trafic courante ρ (veh/km²)
+Vh rhoh;        // Fonction test (variable muette de la formulation faible)
+Vh rhoOld;      // Densité au pas de temps précédent 
+
+// Composantes de vitesse des véhicules (vecteur 3D)
+// vz = 0 car les voitures ne volent pas !
+Vh vx, vy, vz;
+
+
+// --- PARAMÈTRES PHYSIQUES DU TRAFIC ---
+
+int t;
+real dt = 0.001;      // Pas de temps (h) = 3.6s
+real T      = 1.0;    // Durée totale simulation (1 heure)
+int  MM     = T/dt;       // Nombre total de pas = 1000
+int  Subd   = MM/10;      // Subdivision pour la fonction fin (= 100)
+
+real k = 1.0;       // Coefficient de diffusion du trafic (km²/h)
 real vmax = 50.0;   // Vitesse max
 real rhoMax = 800.0;// Densité max
 real c = 40.0;      // Paramètre de décroissance vitesse 
+real rho0   = 1e-30;      // Densité initiale ≈ 0 (route vide au départ)
 
-real a = 3.16e-5;   // Coeff pollution a (kg/veh/h)
-real b = 1e-6;      // Coeff pollution b (kg/veh/km)
-real fmax = 9408.0; // Débit max à l'entrée
+//real a = 3.16e-5;   // Coeff pollution a (kg/veh/h)
+//real b = 1e-6;      // Coeff pollution b (kg/veh/km)
+
+// Initialisation de la densité
+rho = rho0;
+
+// --- FLUX D'ENTREE : SIMULATION HEURE DE POINTE ---
+real fmax = 9408.0;  // Débit maximal à l'entrée (veh/km/h)
+
+func real fin(real t) {
+    if (t >= 0      && t <= 2*Subd)  return fmax * 0.005 * t;
+    if (t >= 2*Subd && t <= 4*Subd)  return fmax * 1.0;
+    if (t >= 4*Subd && t <= 6*Subd)  return fmax * (-0.003*(t - 600) + 0.4);
+    if (t >= 6*Subd && t <= 10*Subd) return fmax * 0.4;
+    return 0.0;   
+}
 
 
+// --- FORMULATION VARIATIONNELLE DE LA DENSITÉ (3D) --- 
+//
+//  Équation forte :
+//    ∂ρ/∂t + ∇·(ρv) − k·Δρ = 0    dans Sh × (0,T)
+//
+//  Formulation faible (on multiplie par φh et on intègre) :
+//
+//  ∫(ρ·φh/dt)                       ← terme instationnaire ∂ρ/∂t
+//  − ∫(ρ_old∘X · φh/dt)             ← advection par méthode des caractéristiques
+//  + ∫(k·∇ρ·∇φh)                    ← diffusion k·Δρ
+//  + ∫(ρ·(∇·v)·φh)                  ← correction divergence (car v dépend de ρ)
+//  − ∫_entrée(fin(t)·φh)            ← condition entrée : flux imposé
+//  − ∫_entrée(ρ·(v·n)·φh)           ← condition entrée : flux advectif naturel
+//
+//  La méthode des caractéristiques (convect) remplace la partie
+//  advective instable ∂ρ/∂t + v·∇ρ par un transport en arrière :
+//  on cherche où était la particule au pas précédent.
 
+
+// problème de la densité (equation de la densité du trafic)
+problem density(rho, rhoh,solver=UMFPACK) =  
+
+    // Terme instationnaire : (ρ^{n+1} - ρ^n∘X^n) / dt
+    int3d(Sh)(rho * rhoh / dt)
+  - int3d(Sh)(convect([vx, vy, vz], -dt, rhoOld) * rhoh / dt)
+
+    // Diffusion : k·∫∇ρ·∇φh  (stabilise numériquement l'advection)
+  + int3d(Sh)(k*dx(rho)*dx(rhoh) + k*dy(rho)*dy(rhoh) + k*dz(rho)*dz(rhoh))
+
+    // Terme de divergence : ρ·∇·v  (car v = v(ρ), donc ∇·v ≠ 0)
+  + int3d(Sh)(rho * (dx(vx) + dy(vy)) * rhoh)
+    // Note: dz(vz)=0 car vz=0 (pas de mouvement vertical des voitures)
+
+    // Condition à la limite ENTRÉE (label=1, face x=0) :
+    // On impose le débit entrant fin(t) et on retire le flux advectif sortant
+  - int2d(Sh, 1)(fin(t) * rhoh)
+  - int2d(Sh, 1)(rho * (vx*N.x + vy*N.y + vz*N.z) * rhoh)
+  ;
+
+
+  // --- PALETTE DE COULEUR --- 
+
+  real[int] colorhsv = [
+    4./6., 1., 1.,   // bleu   (faible densité / faible vitesse)
+    2./6., 0.9, 1.,  // vert   (densité / vitesse moyenne)
+    1.,    1., 1.    // rouge  (forte densité / vitesse nulle = bouchon)
+];
+
+
+// --- BOUCLE TEMPORELLE ---
+
+for (t = 0; t <= MM; t++) {
+
+    // ÉTAPE A : Calcul de la vitesse scalaire des véhicules
+     Vh vrho = vmax * (1.0 - exp((c/vmax) * (1.0 - rhoMax/rho)));
+
+   
+
+    // ÉTAPE B : Décomposition de la vitesse en composantes 3D
+    vx = vrho * n1;   // composante x de la vitesse des véhicules
+    vy = vrho * n2;   // composante y
+    vz = 0.0;         // composante z = 0 (pas de mouvement vertical)
+
+    // ÉTAPE C : Sauvegarde et résolution de la densité
+    rhoOld = rho;   // rhoOld = valeur de ρ au pas précédent, utilisée dans convect() pour remonter la trajectoire des particules
+    density;        // Après "density;", rho contient ρ au pas t+1.
+
+    if (t % 50 == 0) {
+        // Affichage de la vitesse (plan horizontal)
+        real[int] viso0 = [30, 70];   
+        plot(vrho, nbiso=20, fill=1, value=1, wait=0,
+                cmm="VITESSE (km/h) - t=" + t*dt*3600 + " sec",
+                viso=viso0, hsv=colorhsv);     
+                
+        // Affichage de la densité
+        real[int] viso1 = [50, 730];
+        plot(rho, nbiso=20, fill=1, value=1, wait=0,
+            cmm="DENSITE TRAFIC (veh/km2) - t=" + t*dt*3600 + " sec",
+            viso=viso1, hsv=colorhsv);
+        }
+
+    // Affichage console pour suivre la progression
+    cout << "t=" << t << "/" << MM
+         << "  (temps reel=" << t*dt*3600 << " sec)"
+         << "  fin=" << fin(t)
+         << "  rho_max=" << rho[].max
+         << endl;
+
+
+}
+
+cout << "=== FIN SIMULATION ===" << endl;
+cout << "Temps CPU total : " << clock()-s0 << " sec" << endl;
