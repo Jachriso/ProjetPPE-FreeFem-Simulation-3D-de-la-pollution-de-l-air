@@ -158,12 +158,13 @@ problem density(rho, rhoh,solver=UMFPACK) =
 
   // --- PALETTE DE COULEUR --- 
 
-  real[int] colorhsv = [
-    4./6., 1., 1.,   // bleu   (faible densité / faible vitesse)
-    2./6., 0.9, 1.,  // vert   (densité / vitesse moyenne)
-    1.,    1., 1.    // rouge  (forte densité / vitesse nulle = bouchon)
+real[int] colorhsv = [
+    4./6., 1., 1.,   // bleu fonce  (valeur faible)
+    3./6., 1., 1.,   // cyan
+    2./6., 1., 1.,   // vert
+    1./6., 1., 1.,   // jaune
+    0.,    1., 1.    // rouge       (valeur forte)
 ];
-
 
 // --- BOUCLE TEMPORELLE ---
 
@@ -179,31 +180,29 @@ for (t = 0; t <= MM; t++) {
     vy = vrho * n2;   // composante y
     vz = 0.0;         // composante z = 0 (pas de mouvement vertical)
 
+
     // ÉTAPE C : Sauvegarde et résolution de la densité
     rhoOld = rho;   // rhoOld = valeur de ρ au pas précédent, utilisée dans convect() pour remonter la trajectoire des particules
     density;        // Après "density;", rho contient ρ au pas t+1.
 
-    if (t % 50 == 0) {
-        // Affichage de la vitesse (plan horizontal)
-        real[int] viso0 = [30, 70];   
-        plot(vrho, nbiso=20, fill=1, value=1, wait=0,
-                cmm="VITESSE (km/h) - t=" + t*dt*3600 + " sec",
-                viso=viso0, hsv=colorhsv);     
-                
-        // Affichage de la densité
-        real[int] viso1 = [50, 730];
-        plot(rho, nbiso=20, fill=1, value=1, wait=0,
-            cmm="DENSITE TRAFIC (veh/km2) - t=" + t*dt*3600 + " sec",
-            viso=viso1, hsv=colorhsv);
-        }
 
+    // Affichage de la vitesse (plan horizontal)
+    real[int] viso0 = [30, 70];   
+    plot(vrho, nbiso=20, fill=1, value=1, wait=0,
+            cmm="VITESSE (km/h) - t=" + t*dt*3600 + " sec",
+            viso=viso0, hsv=colorhsv);    
+    // Affichage de la densité
+    real[int] viso1 = [50, 500];
+    plot(rho, nbiso=20, fill=1, value=1, wait=0,
+        cmm="DENSITE TRAFIC (veh/km2) - t=" + t*dt*3600 + " sec",
+        viso=viso1, hsv=colorhsv);
+    
     // Affichage console pour suivre la progression
     cout << "t=" << t << "/" << MM
          << "  (temps reel=" << t*dt*3600 << " sec)"
          << "  fin=" << fin(t)
          << "  rho_max=" << rho[].max
          << endl;
-
 
 }
 

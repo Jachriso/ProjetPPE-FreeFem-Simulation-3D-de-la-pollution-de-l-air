@@ -164,7 +164,7 @@ problem density(rho, rhoh,solver=UMFPACK) = int2d(Sh,optimize=0)(rho*rhoh/dt)
 
 fespace Uh(Th,P1);
 
-// norme de la densité
+// norme de la densité (Source)
 V0 F1, F2 ;
 Uh FF ;
 
@@ -209,15 +209,11 @@ problem pollution (phi, phih,solver=UMFPACK) = int2d(Th)(phi*phih/dt)
 // --- BOUCLE DE CALCUL ---
 for (t = 0; t<=MM; t++) {
 
-   cout << "Heavise function(" << t << ") = " << fin(t) << endl;
+   //cout << "Heavise function(" << t << ") = " << fin(t) << endl;
 
    // calcul de la vitesse des véhicules
    vrho = vmax*(1-exp((c/vmax)*(1-(rhomax/rho))));
 
-   // visualisation de la densité
-   real[int] viso0=[30,70];
-   cout << "vitesse min = " << vrho[].min << endl;
-   plot(vrho,nbiso = 20,  fill = 1, value = 1, wait = 1,cmm="t="+t*dt*3600+" sec",viso=viso0,hsv=colorhsv);
    //savemesh(Sh,"Results/Velocity/Velocity" + t + ".mesh");
    //savesol("Results/Velocity/Velocity" + t + ".sol",Sh,vrho,order=1);
 
@@ -229,9 +225,6 @@ for (t = 0; t<=MM; t++) {
    rhoold = rho ;
    density ;
 
-   // visualisation de la densité
-   real[int] viso1=[50,730];
-   plot(rho,nbiso = 20,fill = 1, value = 1, wait = 1,cmm="t="+t*dt*3600+" sec",viso=viso1,hsv=colorhsv);
    //savemesh(Sh,"Results/Density/Density" + t + ".mesh");
    //savesol("Results/Density/Density" + t + ".sol",Sh,rho,order=1);
 
@@ -244,9 +237,32 @@ for (t = 0; t<=MM; t++) {
    phiold = phi ;
    pollution ;
 
-   // visualisation de la pollution
-   real[int] viso2=[0,0.0003];
-   plot(phi, nbiso = 20, fill = 1, value = 1, wait = 1,cmm="t="+t*dt*3600+" sec",viso=viso2,hsv=colorhsv);      
+   
+   cout << "t=" << t << "/" << MM
+             << "  (" << t*dt*3600 << " sec simules)"
+             << "  rho_max=" << rho[].max
+             << "  phi_max=" << phi[].max
+             << endl;
+
+    real[int] viso0=[30,70];
+    plot(vrho, nbiso=20, fill=1, value=1, wait=0,
+         cmm="VITESSE - t="+t*dt*3600+" sec", viso=viso0, hsv=colorhsv);
+
+    real[int] viso1=[50,730];
+    plot(rho, nbiso=20, fill=1, value=1, wait=0,
+         cmm="DENSITE - t="+t*dt*3600+" sec", viso=viso1, hsv=colorhsv);
+
+    real[int] viso2=[0,0.0003];
+    plot(phi, nbiso=20, fill=1, value=1, wait=0,
+         cmm="POLLUTION - t="+t*dt*3600+" sec", viso=viso2, hsv=colorhsv);
+
+   if (t % 100 == 0) {
+      savesol("vitesse_"+t+".sol",  Sh, vrho, order=1);
+      savesol("densite_"+t+".sol",  Sh, rho,  order=1);
+      savesol("pollution_"+t+".sol", Th, phi,  order=1);
+   }
+
+
    //savemesh(Th,"Results/Concentration/Concentration" + t + ".mesh"); // ../../Results/2D_adapte/Concentration" + i + ".mesh"
    //savesol("Results/Concentration/Concentration" + t + ".sol",Th,phi,order=1);
 }
