@@ -1,0 +1,273 @@
+load "msh3"
+load "medit"
+load "UMFPACK64"   // INDISPENSABLE pour NS - manquait dans votre code
+load "MUMPS_seq"
+
+real s0 = clock();
+
+// --- DIMENSIONS (en km) ---
+real LT = 1.0;
+real lT = 0.5;
+real lRoute = 0.05;
+real lRue = 0.03;
+real LRue = 0.1;
+real xDebRue = 0.75;
+real xFinRue = xDebRue + lRue;
+real yBas = 0.2;
+real yHaut = yBas + lRoute;
+
+// --- BORDS DU QUARTIER ---
+// Gauche : decoupee en 3 pour eviter superposition avec la route
+border b1(t=0, LT)       { x=t;   y=0;   label=11; }  // bas
+border b3(t=LT, 0)       { x=t;   y=lT;  label=11; }  // haut
+border b4a(t=lT, yHaut)  { x=0;   y=t;   label=10; }  // gauche haut (entree vent)
+border b4b(t=yHaut, yBas){ x=0;   y=t;   label=1;  }  // gauche = entree route
+border b4c(t=yBas, 0)    { x=0;   y=t;   label=10; }  // gauche bas (entree vent)
+// Droite : decoupee en 3
+border b2a(t=0, yBas)    { x=LT;  y=t;   label=12; }  // droite bas (sortie vent)
+border b2b(t=yBas, yHaut){ x=LT;  y=t;   label=2;  }  // droite = sortie route
+border b2c(t=yHaut, lT)  { x=LT;  y=t;   label=12; }  // droite haut (sortie vent)
+// NOTE : label=12 pour la sortie vent (different de label=10 entree)
+// Cela evite d'imposer le profil d'entree aussi sur la sortie !
+
+// --- BORDS DE LA ROUTE ---
+border Haut(t=LT, 0)    { x=t;        y=yHaut;        label=3; }
+border EntreeG(t=yHaut, yBas){ x=0;   y=t;            label=1; }
+border BasG(t=0, xDebRue){ x=t;       y=yBas;         label=3; }
+border RueG(t=0, LRue)  { x=xDebRue;  y=yBas-t;       label=3; }
+border RueSortie(t=xDebRue, xFinRue){ x=t; y=yBas-LRue; label=2; }
+border RueD(t=0, LRue)  { x=xFinRue;  y=(yBas-LRue)+t; label=3; }
+border BasD(t=xFinRue, LT){ x=t;      y=yBas;         label=3; }
+border SortieD(t=yBas, yHaut){ x=LT;  y=t;            label=2; }
+
+// --- MAILLAGES 2D ---
+mesh Sh2 = buildmesh(
+    Haut(80) + EntreeG(10) + BasG(30) +
+    RueG(15) + RueSortie(15) + RueD(15) +
+    BasD(30) + SortieD(10)
+);
+
+mesh Th2 = buildmesh(
+    b1(25) + b2a(5) + b2b(5) + b2c(5) + b3(25)
+  + b4c(5) + b4b(5) + b4a(5)
+  + Haut(40) + BasG(15) + RueG(8)
+  + RueSortie(8) + RueD(8) + BasD(15)
+);
+
+// --- PASSAGE EN 3D ---
+int nlayers = 5;
+real H = 0.02;   // hauteur = 20 metres en km
+
+mesh3 Sh = buildlayers(Sh2, nlayers, zbound=[0, H]);
+mesh3 Th = buildlayers(Th2, nlayers, zbound=[0, H]);
+
+// Verification des labels apres extrusion
+// buildlayers cree automatiquement :
+//   - label sol (z=0)  = les labels 2D x (-1) -> souvent negatifs, ou label specifique
+//   - label toit (z=H) = label specifique
+// On va afficher les aires pour identifier les bons labels
+cout << "=== VERIFICATION LABELS MAILLAGE Th ===" << endl;
+cout << "Aire label 10 (entree vent gauche) = " << int2d(Th,10)(1.) << endl;
+cout << "Aire label 11 (haut/bas quartier)  = " << int2d(Th,11)(1.) << endl;
+cout << "Aire label 12 (sortie vent droite) = " << int2d(Th,12)(1.) << endl;
+cout << "Aire label 1  (sol z=0 ?)          = " << int2d(Th,1)(1.)  << endl;
+cout << "Aire label 2  (toit z=H ?)         = " << int2d(Th,2)(1.)  << endl;
+cout << "Aire label 3  (murs route)         = " << int2d(Th,3)(1.)  << endl;
+// -> Les labels avec aire non nulle sont ceux qu'on peut utiliser dans on(...)
+
+// ============================================================
+//  NAVIER-STOKES POUR LE VENT
+//
+//  Espaces de fonctions Taylor-Hood :
+//    - P23d pour la vitesse (quadratique, obligatoire pour NS)
+//    - P13d pour la pression (lineaire)
+//
+//  Variables :
+//    - [windU, windV, windW] = composantes du vent (x, y, z)
+//    - windP                  = pression
+//    - [windUh, windVh, windWh, windPh] = fonctions test
+// ============================================================
+fespace XVh(Th, P23d);  // espace vitesse P2 en 3D
+fespace MPh(Th, P13d);                 // espace pression P1 en 3D
+
+XVh windU, windV, windW;             // vent courant
+XVh windUOld, windVOld, windWOld;    // vent au pas precedent
+XVh windUh, windVh, windWh;          // fonctions test vitesse
+MPh windP, windPh;                     // pression et sa fonction test
+
+// --- PARAMETRES PHYSIQUES DU VENT ---
+real nuAir  = 1.5e-8;  // viscosite cinematique de l'air (km^2/h)
+                        // = 1.5e-5 m^2/s converti en km^2/h
+real U0      = 2.0;     // vitesse de reference du vent en haut du domaine (km/h)
+real alpha   = 1./7.;   // exposant loi puissance (1/7 = campagne, 1/3 = urbain dense)
+
+// Profil de vent a l'entree avec cisaillement vertical (loi puissance)
+// u(z) = U0 * (z/H)^alpha
+// -> u = 0 au sol (z=0), u = U0 au toit (z=H)
+// C'est le cisaillement vertical de votre presentation (slide 5)
+func uIn = U0 * (z/H)^alpha;
+
+// Initialisation du vent avec le profil de cisaillement
+windU = uIn;   // vent dans la direction x (horizontal)
+windV = 0.0;   // pas de composante y initialement
+windW = 0.0;   // pas de composante verticale
+
+// --- PARAMETRES TEMPORELS ---
+int t;
+real dt  = 0.01;   // pas de temps (h) = 3.6 secondes
+real T   = 1.0;     // duree totale (1 heure)
+int  MM  = T/dt;    // 1000 pas de temps
+
+// ============================================================
+//  FORMULATION VARIATIONNELLE DE NAVIER-STOKES
+//
+//  Equation forte :
+//    du/dt + (u.grad)u + (1/rho)*grad(p) - nu*Delta(u) = 0
+//    div(u) = 0
+//
+//  Formulation faible (apres IPP sur Delta(u) et grad(p)) :
+//
+//  Pour la composante x :
+//  ∫(u*uh/dt) - ∫(convect(uOld,-dt,uOld)*uh/dt)   <- du/dt + advection
+//  + ∫(nu*grad(u)*grad(uh))                         <- diffusion (apres IPP)
+//  - ∫(p*dx(uh))                                    <- pression (apres IPP)
+//
+//  Idem pour y et z.
+//
+//  Contrainte incompressibilite :
+//  ∫(div(u)*ph) = 0
+//
+//  Conditions aux bords :
+//  - Entree vent (label=10) : Dirichlet u=uIn, v=0, w=0
+//  - Sortie vent (label=12) : Neumann naturel (rien = sortie libre)
+//  - Sol z=0 (label a verifier) : no-slip u=v=w=0
+//  - Toit z=H (label a verifier) : glissement libre w=0 seulement
+//  - Murs route (label=3) : no-slip u=v=w=0
+// ============================================================
+problem NavierStokes(
+    [windU, windV, windW, windP],
+    [windUh, windVh, windWh, windPh],
+    solver=UMFPACK
+) =
+
+    // --- TERME INSTATIONNAIRE + ADVECTION (methode des caracteristiques) ---
+    // Pour x :
+    int3d(Th)( windU * windUh / dt )
+  - int3d(Th)( convect([windUOld, windVOld, windWOld], -dt, windUOld) * windUh / dt )
+
+    // Pour y :
+  + int3d(Th)( windV * windVh / dt )
+  - int3d(Th)( convect([windUOld, windVOld, windWOld], -dt, windVOld) * windVh / dt )
+
+    // Pour z :
+  + int3d(Th)( windW * windWh / dt )
+  - int3d(Th)( convect([windUOld, windVOld, windWOld], -dt, windWOld) * windWh / dt )
+
+    // --- DIFFUSION VISQUEUSE (apres IPP : Delta(u) -> grad(u)*grad(uh)) ---
+    // Pour x :
+  + int3d(Th)( nuAir*(dx(windU)*dx(windUh) + dy(windU)*dy(windUh) + dz(windU)*dz(windUh)) )
+    // Pour y :
+  + int3d(Th)( nuAir*(dx(windV)*dx(windVh) + dy(windV)*dy(windVh) + dz(windV)*dz(windVh)) )
+    // Pour z :
+  + int3d(Th)( nuAir*(dx(windW)*dx(windWh) + dy(windW)*dy(windWh) + dz(windW)*dz(windWh)) )
+
+    // --- GRADIENT DE PRESSION (apres IPP : grad(p) -> -p*div(vh)) ---
+  - int3d(Th)( windP * (dx(windUh) + dy(windVh) + dz(windWh)) )
+
+    // --- CONTRAINTE D'INCOMPRESSIBILITE : div(u) = 0 ---
+  + int3d(Th)( (dx(windU) + dy(windV) + dz(windW)) * windPh )
+
+    // --- CONDITIONS AUX BORDS ---
+
+    // Entree vent : face gauche x=0, label=10
+    // On impose le profil de cisaillement vertical uIn(z)
+  + on(10, windU=uIn, windV=0., windW=0.)
+
+    // Sol z=0 : no-slip - les voitures et batiments freinent le vent jusqu'a zero
+    // VERIFIER le label avec les cout << ci-dessus - probablement label=1 ou negatif
+    // Commenter/decommenter selon ce qu'affiche la verification
+  + on(1, windU=0., windV=0., windW=0.)   // sol z=0 (adapter le label si besoin)
+
+    // Murs de la route et batiments : no-slip
+  + on(3, windU=0., windV=0., windW=0.)
+
+    // Toit z=H : glissement libre - seulement w=0, u et v libres
+    // VERIFIER le label - probablement label=2
+  + on(2, windW=0.)   // toit z=H (adapter le label si besoin)
+
+    // label=12 (sortie droite) : RIEN = condition de Neumann naturelle
+    // Le vent s'echappe librement - pas besoin d'ecrire on(12,...)
+    // label=11 (haut/bas quartier) : RIEN = meme raison
+
+    ;
+
+problem Stokes(
+    [windU, windV, windW, windP],
+    [windUh, windVh, windWh, windPh],
+    solver=MUMPS
+) =
+    int3d(Th)(nu_air*(dx(windU)*dx(windUh)+dy(windU)*dy(windUh)+dz(windU)*dz(windUh)))
+  + int3d(Th)(nu_air*(dx(windV)*dx(windVh)+dy(windV)*dy(windVh)+dz(windV)*dz(windVh)))
+  + int3d(Th)(nu_air*(dx(windW)*dx(windWh)+dy(windW)*dy(windWh)+dz(windW)*dz(windWh)))
+  - int3d(Th)(windP*(dx(windUh)+dy(windVh)+dz(windWh)))
+  + int3d(Th)((dx(windU)+dy(windV)+dz(windW))*windPh)
+  + on(10, windU=uIn, windV=0., windW=0.)
+  + on(1,  windU=0., windV=0., windW=0.)
+  + on(3,  windU=0., windV=0., windW=0.)
+  + on(2,  windW=0.)
+  ;
+
+// ============================================================
+//  PALETTE DE COULEURS
+// ============================================================
+real[int] colorhsv = [
+    4./6., 1., 1.,   // bleu fonce (vitesse faible)
+    3./6., 1., 1.,   // cyan
+    2./6., 1., 1.,   // vert
+    1./6., 1., 1.,   // jaune
+    0.,    1., 1.    // rouge (vitesse forte)
+];
+
+Stokes;
+plot(windU, fill=1, value=1, wait=1, cmm="Vent U - Stokes stationnaire");
+
+// ============================================================
+//  BOUCLE TEMPORELLE - VENT SEUL
+// ============================================================
+for (t = 0; t <= MM; t++) {
+
+    // Sauvegarde du vent au pas precedent (necessaire pour convect)
+    windUOld = windU;
+    windVOld = windV;
+    windWOld = windW;
+
+    // Resolution de Navier-Stokes -> calcule [windU, windV, windW, windP]
+    NavierStokes;
+
+    // Affichage tous les 50 pas
+
+        cout << "t=" << t << "/" << MM
+             << "  (" << t*dt*3600 << " sec)"
+             << "  windU_max=" << windU[].max
+             << "  windU_min=" << windU[].min
+             << "  windP_max=" << windP[].max
+             << endl;
+
+        // Visualisation de la vitesse u (composante x du vent)
+        real uMax = max(windU[].max, 1e-10);
+        real uMin = windU[].min;
+        real[int] visoU = [uMin, uMax];
+        plot(windU, nbiso=30, fill=1, value=1, wait=0,
+             cmm="VENT composante U (km/h) - t="+t*dt*3600+" sec",
+             viso=visoU, hsv=colorhsv);
+
+        // Visualisation de la pression
+        real[int] visoP = [windP[].min, windP[].max];
+        plot(windP, nbiso=30, fill=1, value=1, wait=0,
+             cmm="PRESSION - t="+t*dt*3600+" sec",
+             viso=visoP, hsv=colorhsv);
+    
+}
+
+cout << "=== FIN SIMULATION VENT ===" << endl;
+cout << "Temps CPU total : " << clock()-s0 << " sec" << endl;
