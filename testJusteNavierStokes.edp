@@ -204,11 +204,11 @@ problem NavierStokes(
 problem Stokes(
     [windU, windV, windW, windP],
     [windUh, windVh, windWh, windPh],
-    solver=MUMPS
+    solver=UMFPACK   
 ) =
-    int3d(Th)(nu_air*(dx(windU)*dx(windUh)+dy(windU)*dy(windUh)+dz(windU)*dz(windUh)))
-  + int3d(Th)(nu_air*(dx(windV)*dx(windVh)+dy(windV)*dy(windVh)+dz(windV)*dz(windVh)))
-  + int3d(Th)(nu_air*(dx(windW)*dx(windWh)+dy(windW)*dy(windWh)+dz(windW)*dz(windWh)))
+    int3d(Th)(nuAir*(dx(windU)*dx(windUh)+dy(windU)*dy(windUh)+dz(windU)*dz(windUh)))
+  + int3d(Th)(nuAir*(dx(windV)*dx(windVh)+dy(windV)*dy(windVh)+dz(windV)*dz(windVh)))
+  + int3d(Th)(nuAir*(dx(windW)*dx(windWh)+dy(windW)*dy(windWh)+dz(windW)*dz(windWh)))
   - int3d(Th)(windP*(dx(windUh)+dy(windVh)+dz(windWh)))
   + int3d(Th)((dx(windU)+dy(windV)+dz(windW))*windPh)
   + on(10, windU=uIn, windV=0., windW=0.)
@@ -258,14 +258,12 @@ for (t = 0; t <= MM; t++) {
         real uMin = windU[].min;
         real[int] visoU = [uMin, uMax];
         plot(windU, nbiso=30, fill=1, value=1, wait=0,
-             cmm="VENT composante U (km/h) - t="+t*dt*3600+" sec",
-             viso=visoU, hsv=colorhsv);
+             cmm="VENT composante U (km/h) - t="+t*dt*3600+" sec");
 
         // Visualisation de la pression
         real[int] visoP = [windP[].min, windP[].max];
         plot(windP, nbiso=30, fill=1, value=1, wait=0,
-             cmm="PRESSION - t="+t*dt*3600+" sec",
-             viso=visoP, hsv=colorhsv);
+             cmm="PRESSION - t="+t*dt*3600+" sec");
     
 }
 

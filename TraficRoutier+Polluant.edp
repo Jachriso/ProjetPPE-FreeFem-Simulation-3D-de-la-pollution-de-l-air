@@ -9,7 +9,7 @@ real lT = 0.5;            // Largeur de la zone d'étude
 
 real lRoute = 0.05;       // Largeur de la route principale
 real lRue = 0.03;         // Largeur de la rue perpendiculaire
-real LRue = 0.1;          // Profondeur de la rue perpendiculaire
+real LRue = 0.15;          // Profondeur de la rue perpendiculaire
 
 real xDebRue = 0.75;      // Début intersection
 real xFinRue = xDebRue + lRue; 
@@ -57,7 +57,7 @@ border SortieD(t=yBas, yHaut){x=LT; y=t; label=2;} // SORTIE A
 // --- GÉNÉRATION DU MAILLAGE 2D ---
 
 // Domaine route
-mesh Sh2 = buildmesh(Haut(80) + EntreeG(10) + BasG(30) + RueG(15) + RueSortie(15) + RueD(15) + BasD(30) + SortieD(10));
+/*mesh Sh2 = buildmesh(Haut(80) + EntreeG(10) + BasG(30) + RueG(15) + RueSortie(15) + RueD(15) + BasD(30) + SortieD(10));
 
 // Domaine pollution (route + air autour)
 mesh Th2 = buildmesh(
@@ -65,11 +65,25 @@ mesh Th2 = buildmesh(
   + b4c(10) + b4b(10) + b4a(10)
   + Haut(80) + BasG(30) + RueG(15) 
   + RueSortie(15) + RueD(15) + BasD(30)
+);*/
+
+// Remplacer les deux buildmesh par :
+mesh Sh2 = buildmesh(
+    Haut(40) + EntreeG(5) + BasG(15) +
+    RueG(8) + RueSortie(8) + RueD(8) +
+    BasD(15) + SortieD(5)
+);
+
+mesh Th2 = buildmesh(
+    b1(25) + b2a(5) + b2b(5) + b2c(5) + b3(25)
+  + b4c(5) + b4b(5) + b4a(5)
+  + Haut(40) + BasG(15) + RueG(8)
+  + RueSortie(8) + RueD(8) + BasD(15)
 );
 
 // --- PASSAGE EN 3D ---
 // On crée 10 couches sur une hauteur de 20 mètres (0.02 km)
-int nlayers = 10;
+int nlayers = 5;
 real H = 0.02; 
 
 mesh3 Sh = buildlayers(Sh2, nlayers, zbound=[0, H]); // Route 3D
@@ -88,7 +102,7 @@ V0 reg = region;     // region = identifiant du sous-domaine
 // On sonde un point sur la route pour recuperer son numero de region
 real yMilieu = yBas + lRoute/2.;
 real zMilieu = 0;
-int roadRegion = reg(0.1, yMilieu,zMilieu);
+int roadRegion = reg(0.2, yMilieu,zMilieu);
 cout << "Region road = " << roadRegion << endl;
 
 // Masques : valent 1 sur la route, 0 dans l'air
@@ -145,7 +159,7 @@ Uh FF;         // Norme du flux interpolee sur Th
 
 // Traffic
 int t;
-real dt = 0.001;      // Pas de temps (h) = 3.6s
+real dt = 0.005;      // Pas de temps (h) = 3.6s
 real T = 1.0;         // Durée totale simulation (1 heure)
 int  MM = T/dt;       // Nombre total de pas = 1000
 int  Subd = MM/10;    // Subdivision pour la fonction fin (= 100)
@@ -301,22 +315,22 @@ for (t = 0; t <= MM; t++) {
          << "  rho_max=" << rho[].max
          << endl;
 
-    // Affichage de la vitesse (plan horizontal)
-    real[int] viso0 = [0, 50];  // 5 (bouchons) à 50 km/h (route vide)  
-    plot(vrho, nbiso=50, fill=1, value=1, wait=0,
-            cmm="VITESSE (km/h) - t=" + t*dt*3600 + " sec",
-            viso=viso0, hsv=colorhsv);     
-            
-    // Affichage de la densité
-    real[int] viso1 = [0, 300]; //???
-    plot(rho, nbiso=50, fill=1, value=1, wait=0,
-        cmm="DENSITE TRAFIC (veh/km2) - t=" + t*dt*3600 + " sec",
-        viso=viso1, hsv=colorhsv);
-    
-    real[int] viso2 = [0, 4e-4];
-    plot(phi, nbiso=50, fill=1, value=1, wait=0,
-        cmm="POLLUTION NO2 (kg/km2) - t="+t*dt*3600+" sec",
-        viso=viso2, hsv=colorhsv);
+  if (t % 50 == 0) {
+      real[int] viso0 = [vrho[].min, max(vrho[].max, 1e-10)];
+      plot(vrho, nbiso=20, fill=1, value=1, wait=1,
+          cmm="VITESSE - t="+t*dt*3600+" sec",
+          viso=viso0, hsv=colorhsv);
+
+      real[int] viso1 = [rho[].min, max(rho[].max, 1e-10)];
+      plot(rho, nbiso=20, fill=1, value=1, wait=1,
+          cmm="DENSITE - t="+t*dt*3600+" sec",
+          viso=viso1, hsv=colorhsv);
+
+      real[int] viso2 = [0, max(phi[].max, 1e-10)];
+      plot(phi, nbiso=20, fill=1, value=1, wait=1,
+          cmm="POLLUTION - t="+t*dt*3600+" sec",
+          viso=viso2, hsv=colorhsv);
+  }
 
 }
 
