@@ -3,6 +3,12 @@ load "medit"
 
 real s0 = clock();
 
+// Macros (3D) :
+macro grad(u)  [dx(u), dy(u), dz(u)] //
+macro Grad(U)  [grad(U#x), grad(U#y), grad(U#z)]//
+macro div(ux,uy,uz) (dx(ux)+dy(uy)+dz(uz))//
+macro Div(U)   div(U#x, U#y, U#z)  //   
+
 // --- 1. DIMENSIONS (km) ---
 
 // Définition des dimensions du domaine d'étude
@@ -49,7 +55,7 @@ mesh Th2 = buildmesh(
 );
 
 // Passage de Th2 en 3D pour la pollution 
-int nlayers = 10;                                      // Plus de couches pour mieux voir la pollution monter
+int nlayers = 8;                                      // Plus de couches pour mieux voir la pollution monter
 real H = 0.02;                                         // Hauteur de 20 mètres 
 mesh3 Th = buildlayers(Th2, nlayers, zbound=[0, H]);   // Transforme le plan 2D en volume 3D en empilant 10 couches sur hauteur de 20 mètres
 
@@ -72,19 +78,18 @@ Uh phih;       // Fonction de test de la formulation faible
 Uh rho3D;      // Densité rho récupérer depuis Sh2 vers Th
 Uh FF3D;       // Norme de flux de trafic ||F|| projetée en 3D -> F=rho*v-k*grad(rho)
 
-//Fespace
-fespace Uh(Th, [P2, P2]);
-Uh [ux, uy];
-Uh [upx, upy];
-Uh [vx, vy];
+// Fespace
+fespace Zh(Th, [P23d, P23d, P23d]);  // P2 3D pour vitesse
+fespace Ph(Th, P13d);                 // P1 3D pour pression
 
-fespace Ph(Th, P1);
-Ph p;
-Ph q;
+Zh [windU, windV, windW];             // vent courant
+Zh [windUOld, windVOld, windWOld];    // vent precedent (pour convect)
+Zh [windUh, windVh, windWh];          // fonctions test
+Ph windP, windPh;
 
 
 // Vent horizontal fixe 
-Uh u1=1.0, u2=-0.5, u3=0; 
+//Uh u1=1.0, u2=-0.5, u3=0; 
 
 
 // --- 5. CALCUL DE LA DIRECTION DU TRAFIC ---
@@ -110,7 +115,7 @@ Vh2 n2 = dy(psi)/sqrt(dx(psi)^2+dy(psi)^2+1e-30);
 // Paramètre de temps
 
 int t;            // Compteur de pas 
-real dt = 0.003;  // Pas de temps en heure 
+real dt = 0.001;  // Pas de temps en heure 
 real T = 1.0;     // Durée totale = ici 1h
 int MM = T/dt;    // Nombre de pas (Utilisé dans la boucle for pour aller jusqu'au temps t max)
 
@@ -126,6 +131,12 @@ real sigma = 0.6e-2 ;         // Taux d'extinction du polluant
 real mu = 3.5e-8 ;            // Taux de diffusion
 real eta = 3.16e-5 ;          // in kg/veh/h
 real nu = 1e-6 ;              // in kg/veh/km²
+
+// Paramètre du vent
+real RhoVent = 1.0;       // densite air normalisee
+real MuVent = 1.5e-8;    // viscosite cinematique (km^2/h)
+real U0 = 2.0;       // vitesse reference (km/h)
+func uIn = U0 * (z/H)^(1./7.);
 
 // Fonction de flux : Débit entrant similant une heure de pointe
 func real fluxEntree(real th) {
@@ -150,12 +161,37 @@ problem density(rho, rhoh) =
 // Modèle de pollution : Equation d'advection-diffusion
 problem pollution(phi, phih) =
     int3d(Th)(phi * phih / dt)                                               // phi*phi / dt
-    - int3d(Th)(convect([u1, u2, u3], -dt, phiOld) * phih / dt)              // - (phiOld o X^n * phih) / dt
+    - int3d(Th)(convect([windU, windV, windW], -dt, phiOld) * phih / dt)              // - (phiOld o X^n * phih) / dt
     + int3d(Th)(sigma * phi * phih)                                          // signma*phi*phih
     + int3d(Th)(mu*(dx(phi)*dx(phih) + dy(phi)*dy(phih) + dz(phi)*dz(phih))) // mu·∇phi·∇phih
     - int3d(Th)((eta * rho3D + nu * FF3D) * phih)                            // Source S = η·rho3D + ν·‖F‖
     + on(1, 2, 10, 11, phi=0);                                               // Pollution s'évacue par toutes les ouvertures
 
+// Modèle du vent : Navier-Stokes
+problem NS([windU, windV, windW, windP],[windUh, windVh, windWh, windPh], solver=UMFPACK) =
+        int3d(Th)(
+            (RhoVent/dt) * ( windU*windUh + windV*windVh + windW*windWh )         // Terme instationnaire : Rho/dt * (u - u_old∘X) * v
+            + MuVent * (                                                          // Diffusion visqueuse : Mu * grad(u):grad(v)
+                dx(windU)*dx(windUh) + dy(windU)*dy(windUh) + dz(windU)*dz(windUh)
+              + dx(windV)*dx(windVh) + dy(windV)*dy(windVh) + dz(windV)*dz(windVh)
+              + dx(windW)*dx(windWh) + dy(windW)*dy(windWh) + dz(windW)*dz(windWh)
+            )                         
+            - windP *(dx(windUh) + dy(windVh) + dz(windWh))      // Pression : -p * div(v)
+            - (dx(windU) + dy(windV) + dz(windW)) * windPh       // Continuite : -div(u) * q
+        )
+        - int3d(Th)(                 // Rho/dt * u_old∘X * v
+            (RhoVent/dt) * (
+                  convect([windUOld,windVOld,windWOld], -dt, windUOld) * windUh
+                + convect([windUOld,windVOld,windWOld], -dt, windVOld) * windVh
+                + convect([windUOld,windVOld,windWOld], -dt, windWOld) * windWh
+            )
+        )
+                // Conditions aux bords
+        + on(10, windU=uIn, windV=0., windW=0.)  // entree vent
+        + on(1,  windU=0.,  windV=0., windW=0.)  // sol no-slip
+        + on(3,  windU=0.,  windV=0., windW=0.)  // murs route no-slip
+        + on(2,  windW=0.)                        // toit glissement libre
+        ;
 
 real[int] colorhsv = [
     4./6., 1., 1.,  // bleu foncé  → valeur faible (route vide / pas de pollution)
@@ -165,6 +201,10 @@ real[int] colorhsv = [
     0.,    1., 1.   // rouge       → valeur forte (bouchon / forte pollution)
 ];
 
+// Résolution Navier Stokes
+[windU, windV, windW] = [uIn, 0., 0.];    
+[windUOld, windVOld, windWOld] = [windU, windV, windW];
+NS;
 
 // --- 8. BOUCLE PRINCIPALE ---
 
@@ -180,7 +220,6 @@ for (t = 0; t <= MM; t++) {
     // Résolution de la densité du trafic (2D)
     rhoOld = rho;   // Sauvegarde rho^n avant de calculer rho^n+1
     density;        // résoud et met à jour rho = rho^n+1     
-    
     rho = max(rho, 0.0); // Si valeurs legerement négatives aux bords 
 
     // Projection des variables trafic en 3D
@@ -195,9 +234,10 @@ for (t = 0; t <= MM; t++) {
 
     // Affichage
     //if (t % 10 == 0) {
-        cout << "Temps: " << t*dt*60 << " min | RhoMax: " << rho[].max << " | PhiMax: " << phi[].max << endl;
-        plot(rho, fill=1, wait=0, cmm="Trafic 2D - t="+(t*dt*60)+" min");
-        plot(phi, fill=1, wait=0, cmm="Pollution 3D - t="+(t*dt*60)+" min");
+        cout << "Temps: " << t*dt << " h | RhoMax: " << rho[].max << " | PhiMax: " << phi[].max << endl;
+        //plot(vrho, fill=1, wait=0, cmm="Vitesse 2D - t="+(t*dt)+" h");
+        //plot(rho, fill=1, wait=0, cmm="Trafic 2D - t="+(t*dt)+" h");
+        plot(phi, fill=1, wait=0, cmm="Pollution 3D - t="+(t*dt)+" h");
     //}
  
 }

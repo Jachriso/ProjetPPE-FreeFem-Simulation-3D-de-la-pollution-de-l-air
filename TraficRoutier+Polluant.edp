@@ -317,19 +317,16 @@ for (t = 0; t <= MM; t++) {
 
   if (t % 50 == 0) {
       real[int] viso0 = [vrho[].min, max(vrho[].max, 1e-10)];
-      plot(vrho, nbiso=20, fill=1, value=1, wait=1,
-          cmm="VITESSE - t="+t*dt*3600+" sec",
-          viso=viso0, hsv=colorhsv);
+      plot(vrho, nbiso=20, fill=1, value=0, wait=1,
+          cmm="VITESSE - t="+t*dt*3600+" sec");
 
       real[int] viso1 = [rho[].min, max(rho[].max, 1e-10)];
-      plot(rho, nbiso=20, fill=1, value=1, wait=1,
-          cmm="DENSITE - t="+t*dt*3600+" sec",
-          viso=viso1, hsv=colorhsv);
+      plot(rho, nbiso=20, fill=1, value=0, wait=1,
+          cmm="DENSITE - t="+t*dt*3600+" sec");
 
       real[int] viso2 = [0, max(phi[].max, 1e-10)];
-      plot(phi, nbiso=20, fill=1, value=1, wait=1,
-          cmm="POLLUTION - t="+t*dt*3600+" sec",
-          viso=viso2, hsv=colorhsv);
+      plot(phi, nbiso=20, fill=1, value=1, wait=0,
+          cmm="POLLUTION - t="+t*dt*3600+" sec");
   }
 
 }

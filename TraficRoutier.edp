@@ -158,10 +158,10 @@ for (t = 0; t <= MM; t++) {
     if (t % 5 == 0) { // On affiche tous les 5 pas pour aller plus vite
     // Affichage de la vitesse (plan horizontal)
    plot(vrho, fill=1, value=1, wait=1,
-         cmm="VITESSE : t="+t*dt*60 +"min | Min: " + vrho[].min + " | Max: " + vrho[].max + " km/h");
+         cmm="VITESSE : t="+t*dt +"h | Min: " + vrho[].min + " | Max: " + vrho[].max + " km/h");
     
-    plot(rho, fill=1, value=1, wait=1
-         cmm="DENSITE : t="+t*dt*60 +"min | Min: " + rho[].min + " | Max: " + rho[].max + " veh/km2");
+    plot(rho, fill=1, value=1, wait=1,
+         cmm="DENSITE : t="+t*dt +"h | Min: " + rho[].min + " | Max: " + rho[].max + " veh/km2");
     }
     // Affichage console pour suivre la progression
     cout << "t=" << t << "/" << MM
