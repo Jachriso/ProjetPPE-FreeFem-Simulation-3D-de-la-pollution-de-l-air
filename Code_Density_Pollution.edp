@@ -225,6 +225,19 @@ for (t = 0; t<=MM; t++) {
    rhoold = rho ;
    density ;
 
+   if (t % 100 == 0 ) {
+        cout << "--- Sauvegarde et Affichage Medit (t = " << t*dt << " h) ---" << endl;
+
+        // --- 1. TRAFIC (2D) ---
+        // savesol("densite_" + t + ".sol", Sh2, rho);
+        medit("Densite de Trafic", Sh, rho, meditff="ffmedit"); // Décommenter si tu veux voir le trafic
+
+         real[int] viso1=[50,730];
+         plot(rho, nbiso=20, fill=1, value=1, wait=0,
+         cmm="DENSITE - t="+t*dt*3600+" sec", viso=viso1);
+    }
+
+    /*
    //savemesh(Sh,"Results/Density/Density" + t + ".mesh");
    //savesol("Results/Density/Density" + t + ".sol",Sh,rho,order=1);
 
@@ -264,7 +277,7 @@ for (t = 0; t<=MM; t++) {
 
 
    //savemesh(Th,"Results/Concentration/Concentration" + t + ".mesh"); // ../../Results/2D_adapte/Concentration" + i + ".mesh"
-   //savesol("Results/Concentration/Concentration" + t + ".sol",Th,phi,order=1);
+   //savesol("Results/Concentration/Concentration" + t + ".sol",Th,phi,order=1);*/
 }
 cout << "CPU " << clock()-s0 << " sec" << endl;
 

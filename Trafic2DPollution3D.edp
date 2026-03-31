@@ -1,57 +1,56 @@
 load "msh3"
+load "iovtk"
 load "medit"
+verbosity = 0; // Désactive les messages "Solve" par défaut
 
 real s0 = clock();
-
-// Macros (3D) :
-macro grad(u)  [dx(u), dy(u), dz(u)] //
-macro Grad(U)  [grad(U#x), grad(U#y), grad(U#z)]//
-macro div(ux,uy,uz) (dx(ux)+dy(uy)+dz(uz))//
-macro Div(U)   div(U#x, U#y, U#z)  //   
 
 // --- 1. DIMENSIONS (km) ---
 
 // Définition des dimensions du domaine d'étude
 real LT = 1.0, lT = 0.5;                        // Domaine : 1km de long sur 500 m de large
-real lRoute = 0.05, lRue = 0.03, LRue = 0.2;    // Route de 1km de long sur 50m de large ; Rue de 200m de long sur 30m de large
+real lRoute = 0.070, lRue = 0.035, LRue = 0.246;    // Route de 1km de long sur 6m de large ; Rue de 200m de long sur 4m de large
 real xDebRue = 0.75, xFinRue = xDebRue + lRue;  // Début de la rue à 750m 
-real yBas = 0.2, yHaut = yBas + lRoute;         // Bas de la route à 200m du domaine 
+real yBas = 0.246, yHaut = yBas + lRoute;         // Bas de la route à 247m du domaine 
 
 
 // --- 2. DEFINITION DES BORDURES ---
 
 // Frontière de route
-border Haut(t=LT, 0){x=t; y=yHaut; label=3;}                      // Haut
-border EntreeG(t=yHaut, yBas){x=0; y=t; label=1;}                 // Entrée Gauche
-border BasG(t=0, xDebRue){x=t; y=yBas; label=3;}                  // Bas Gauche
-border RueG(t=0, LRue){x=xDebRue; y=yBas-t; label=3;}             // Rue Gauche
-border RueSortie(t=xDebRue, xFinRue){x=t; y=yBas-LRue; label=2;}  // Sortie rue Bas
-border RueD(t=0, LRue){x=xFinRue; y=(yBas-LRue)+t; label=3;}      // Rue Droite
-border BasD(t=xFinRue, LT){x=t; y=yBas; label=3;}                 // Bas Droite
-border SortieD(t=yBas, yHaut){x=LT; y=t; label=2;}                // Sortie principale Droite
+border Haut(t=LT, 0){x=t; y=yHaut; label=1;}                    // Haut de la route
+border EntreeG(t=yHaut, yBas){x=0; y=t; label=2;}               // Entrée Gauche route
+border BasG(t=0, xDebRue){x=t; y=yBas; label=3;}                // Bas Gauche route
+border RueG(t=0, LRue){x=xDebRue; y=yBas-t; label=4;}           // Bord gauche de la rue verticale
+border RueSortie(t=xDebRue, xFinRue){x=t; y=yBas-LRue; label=5;}// Sortie bas de la rue
+border RueD(t=0, LRue){x=xFinRue; y=(yBas-LRue)+t; label=6;}    // Bord droit de la rue verticale
+border BasD(t=xFinRue, LT){x=t; y=yBas; label=7;}               // Bas Droite route
+border SortieD(t=yBas, yHaut){x=LT; y=t; label=8;}              // Sortie principale Droite
 
 // Frontières extérieures du quartier 
-border b1a(t=0, xDebRue){x=t; y=0; label=11;}        // Bas gauche
-border b1b(t=xFinRue, LT){x=t; y=0; label=11;}       // Bas droite
-border b2a(t=0, yBas){x=LT; y=t; label=10;}          // Droite bas
-border b2b(t=yHaut, lT){x=LT; y=t; label=10;}        // Droite haut
-border b3(t=LT, 0){x=t; y=lT; label=11;}             // Haut complet
-border b4a(t=lT, yHaut){x=0; y=t; label=10;}         // Gauche haut
-border b4b(t=yBas, 0){x=0; y=t; label=10;}           // Gauche bas
+border b1a(t=0, xDebRue){x=t; y=0; label=9;}         // Bas gauche quartier
+border b1b(t=xFinRue, LT){x=t; y=0; label=10;}       // Bas droite quartier
+border b2a(t=0, yBas){x=LT; y=t; label=11;}          // Droite bas quartier
+border b2b(t=yHaut, lT){x=LT; y=t; label=12;}        // Droite haut quartier
+border b3(t=LT, 0){x=t; y=lT; label=13;}             // Haut complet quartier
+border b4a(t=lT, yHaut){x=0; y=t; label=14;}         // Gauche haut quartier
+border b4b(t=yBas, 0){x=0; y=t; label=15;}           // Gauche bas quartier  
 
 
 // --- 3. GENERATION DES MAILLAGES ---
 
+int n = 2;
+
 // Maillage 2D de la route pour la densité du trafic
-mesh Sh2 = buildmesh(Haut(40) + EntreeG(5) + BasG(15) + RueG(8) + RueSortie(8) + RueD(8) + BasD(15) + SortieD(5));
+mesh Sh2 = buildmesh(Haut(40*n) + EntreeG(5*n) + BasG(15*n) + RueG(8*n) + RueSortie(8*n) + RueD(8*n) + BasD(15*n) + SortieD(5*n));
+savemesh(Sh2, "route.mesh");
 
 // Maillage 2D du quartier incluant la route
 mesh Th2 = buildmesh(
-    b1a(20) + RueSortie(10) + b1b(10) +  // Bas (Contient la sortie de la rue)
-    b2a(10) + SortieD(10) + b2b(10) +    // Droite (Contient la sortie principale)
-    b3(40) +                             // Haut
-    b4a(10) + EntreeG(10) + b4b(10) +    // Gauche (Contient l'entrée)
-    Haut(40) + BasG(15) + BasD(15) + RueG(10) + RueD(10)    // On rajoute les bords de la route qui sont au milieu du domaine
+    b1a(20*n) + RueSortie(10*n) + b1b(10*n) +  // Bas (Contient la sortie de la rue)
+    b2a(10*n) + SortieD(10*n) + b2b(10*n) +    // Droite (Contient la sortie principale)
+    b3(40*n) +                             // Haut
+    b4a(10*n) + EntreeG(10*n) + b4b(10*n) +    // Gauche (Contient l'entrée)
+    Haut(40*n) + BasG(15*n) + BasD(15*n) + RueG(10*n) + RueD(10*n)    // On rajoute les bords de la route qui sont au milieu du domaine
 );
 
 // Passage de Th2 en 3D pour la pollution 
@@ -59,6 +58,7 @@ int nlayers = 8;                                      // Plus de couches pour mi
 real H = 0.02;                                         // Hauteur de 20 mètres 
 mesh3 Th = buildlayers(Th2, nlayers, zbound=[0, H]);   // Transforme le plan 2D en volume 3D en empilant 10 couches sur hauteur de 20 mètres
 
+savemesh(Th, "Pollution3D.mesh");
 
 // --- 4. ESPACES DE FONCTIONS ---
 
@@ -79,17 +79,13 @@ Uh rho3D;      // Densité rho récupérer depuis Sh2 vers Th
 Uh FF3D;       // Norme de flux de trafic ||F|| projetée en 3D -> F=rho*v-k*grad(rho)
 
 // Fespace
-fespace Zh(Th, [P23d, P23d, P23d]);  // P2 3D pour vitesse
+fespace Zh(Th, [P13d, P13d, P13d]);  // P2 3D pour vitesse   // Tester en P13D
 fespace Ph(Th, P13d);                 // P1 3D pour pression
 
 Zh [windU, windV, windW];             // vent courant
 Zh [windUOld, windVOld, windWOld];    // vent precedent (pour convect)
 Zh [windUh, windVh, windWh];          // fonctions test
 Ph windP, windPh;
-
-
-// Vent horizontal fixe 
-//Uh u1=1.0, u2=-0.5, u3=0; 
 
 
 // --- 5. CALCUL DE LA DIRECTION DU TRAFIC ---
@@ -99,10 +95,9 @@ fespace Wh2(Sh2, P2);  // P2 : quadratique
 Wh2 psi;    // Potentiel scalaire
 Wh2 psih;   // Fonction test de Laplace
 
-problem Laplace(psi, psih) = int2d(Sh2)(dx(psi)*dx(psih) 
-                            + dy(psi)*dy(psih)) 
-                            + int1d(Sh2, 1)(psih) 
-                            + on(2, psi=0);
+problem Laplace(psi, psih) = int2d(Sh2)(dx(psi)*dx(psih) + dy(psi)*dy(psih)) 
+                            + int1d(Sh2,2)(psih)      // Entrée Gauche 
+                            + on(5, 8, psi=0);       // Sorties 
 Laplace; // Résolution
 
 // Vecteur unitaire de direction du trafic 
@@ -122,9 +117,10 @@ int MM = T/dt;    // Nombre de pas (Utilisé dans la boucle for pour aller jusqu
 // Paramètre de trafic
 real k = 1 ;         // Coeff de diffusion du trafic
 real vmax = 50.0;    // Vitesse max sur route vide 
-real rhoMax = 600.0; // Densité max = bouchon total
-real c = 40.0;       // Utilisé pour calculer la vitesse
-real fmax = 12000.0; // Débit max à l'entrée
+real rho0 = 1e-30;   // Densité initiale 
+real rhoMax = 900.0; // Densité max = bouchon total       // rhoMax=20000 et fmax=1000
+real c = 35.0;       // Utilisé pour calculer la vitesse   
+real fmax = 9000.0; // Débit max à l'entrée 
 
 // Paramètre de pollution  
 real sigma = 0.6e-2 ;         // Taux d'extinction du polluant 
@@ -134,9 +130,7 @@ real nu = 1e-6 ;              // in kg/veh/km²
 
 // Paramètre du vent
 real RhoVent = 1.0;       // densite air normalisee
-real MuVent = 1.5e-8;    // viscosite cinematique (km^2/h)
-real U0 = 2.0;       // vitesse reference (km/h)
-func uIn = U0 * (z/H)^(1./7.);
+real MuVent = 1.5e-8;     // viscosite cinematique (km^2/h)
 
 // Fonction de flux : Débit entrant similant une heure de pointe
 func real fluxEntree(real th) {
@@ -155,8 +149,8 @@ problem density(rho, rhoh) =
     - int2d(Sh2)(convect([vx, vy], -dt, rhoOld) * rhoh / dt)  // - (rhoOld o X^n * rhoh) / dt
     + int2d(Sh2)(k*(dx(rho)*dx(rhoh) + dy(rho)*dy(rhoh)))     // k·∇rho·∇rhoh
     + int2d(Sh2)(rho * (dx(vx) + dy(vy)) * rhoh)              // rho·(∇·v)·rhoh
-    - int1d(Sh2, 1)(fluxEntree(t*dt) * rhoh)                  // Condition d'entrée fin*rhoh
-    - int1d(Sh2, 1)(rho * (vx*N.x + vy*N.y) * rhoh);          // Suite condition d'entrée rho·(v·n)·rhoh
+    - int1d(Sh2, 2)(fluxEntree(t*dt) * rhoh)                  // Condition d'entrée fin*rhoh
+    - int1d(Sh2, 2)(rho * (vx*N.x + vy*N.y) * rhoh);           // Suite condition d'entrée rho·(v·n)·rhoh
 
 // Modèle de pollution : Equation d'advection-diffusion
 problem pollution(phi, phih) =
@@ -164,11 +158,10 @@ problem pollution(phi, phih) =
     - int3d(Th)(convect([windU, windV, windW], -dt, phiOld) * phih / dt)              // - (phiOld o X^n * phih) / dt
     + int3d(Th)(sigma * phi * phih)                                          // signma*phi*phih
     + int3d(Th)(mu*(dx(phi)*dx(phih) + dy(phi)*dy(phih) + dz(phi)*dz(phih))) // mu·∇phi·∇phih
-    - int3d(Th)((eta * rho3D + nu * FF3D) * phih)                            // Source S = η·rho3D + ν·‖F‖
-    + on(1, 2, 10, 11, phi=0);                                               // Pollution s'évacue par toutes les ouvertures
+    - int3d(Th)((eta * rho3D + nu * FF3D) * phih);                            // Source S = η·rho3D + ν·‖F‖
 
 // Modèle du vent : Navier-Stokes
-problem NS([windU, windV, windW, windP],[windUh, windVh, windWh, windPh], solver=UMFPACK) =
+problem NS([windU, windV, windW, windP],[windUh, windVh, windWh, windPh]) =
         int3d(Th)(
             (RhoVent/dt) * ( windU*windUh + windV*windVh + windW*windWh )         // Terme instationnaire : Rho/dt * (u - u_old∘X) * v
             + MuVent * (                                                          // Diffusion visqueuse : Mu * grad(u):grad(v)
@@ -186,32 +179,31 @@ problem NS([windU, windV, windW, windP],[windUh, windVh, windWh, windPh], solver
                 + convect([windUOld,windVOld,windWOld], -dt, windWOld) * windWh
             )
         )
-                // Conditions aux bords
-        + on(10, windU=uIn, windV=0., windW=0.)  // entree vent
-        + on(1,  windU=0.,  windV=0., windW=0.)  // sol no-slip
-        + on(3,  windU=0.,  windV=0., windW=0.)  // murs route no-slip
-        + on(2,  windW=0.)                        // toit glissement libre
+        + on(11, 12, windP = 0) // Sortie droite du quartier : Pression nulle
         ;
 
+
 real[int] colorhsv = [
-    4./6., 1., 1.,  // bleu foncé  → valeur faible (route vide / pas de pollution)
-    3./6., 1., 1.,  // cyan
-    2./6., 1., 1.,  // vert        → valeur moyenne
-    1./6., 1., 1.,  // jaune
-    0.,    1., 1.   // rouge       → valeur forte (bouchon / forte pollution)
+    4./6., 1., 1.,  // Bleu (Vide)
+    3./6., 1., 1.,  // Cyan
+    2./6., 1., 1.,  // Vert
+    1./6., 1., 1.,  // Jaune
+    0.5/6., 1., 1., // Orange
+    0., 1., 1.      // Rouge (Bouchon)
 ];
 
-// Résolution Navier Stokes
-[windU, windV, windW] = [uIn, 0., 0.];    
+// Initialisation du vent
+[windU, windV, windW] = [10.0, 0.0, 0.0];
 [windUOld, windVOld, windWOld] = [windU, windV, windW];
-NS;
+
+rho = rho0;  // Initialisation de la densité
+
 
 // --- 8. BOUCLE PRINCIPALE ---
 
 for (t = 0; t <= MM; t++) {
-    // Calcul de la vitesse
-    vrho = vmax * (1.0 - exp((c/vmax) * (1.0 - rhoMax/max(rho, 1e-6)))); // eviter division par 0
-    vrho = max(0.0, min(vmax, vrho)); // s'assure que la vitesse reste dans [0, vmax} -> eviter valeur aberrantes
+    // Calcul de la vitesse   
+    vrho = vmax * (1.0 - exp((c/vmax) * (1.0 - rhoMax/rho))); 
     
     // Décomposition de la vitesse scalaire en composantes 2D (Laplace)
     vx = vrho * n1; 
@@ -220,7 +212,29 @@ for (t = 0; t <= MM; t++) {
     // Résolution de la densité du trafic (2D)
     rhoOld = rho;   // Sauvegarde rho^n avant de calculer rho^n+1
     density;        // résoud et met à jour rho = rho^n+1     
-    rho = max(rho, 0.0); // Si valeurs legerement négatives aux bords 
+    
+    if (t % 100 == 0 ) {
+        cout << "--- Sauvegarde et Affichage Medit (t = " << t*dt << " h) ---" << endl;
+
+        real[int] viso1=[50,800];
+         plot(rho, nbiso=20, fill=1, value=1, wait=0,
+         cmm="DENSITE - t="+t*dt*3600+" sec", viso=viso1, hsv=colorhsv);
+            // --- 1. TRAFIC (2D) ---
+        savesol("densite_" + t + ".sol", Sh2, rho);
+        medit("Densite de Trafic", Sh2, rho, meditff="ffmedit"); // Décommenter si tu veux voir le trafic
+        
+        cout << "---------------------------------------------------" << endl;
+        cout << " PAS DE TEMPS : " << t << " / " << MM 
+            << " | TEMPS SIMULE : " << t*dt*3600 << " sec" << endl;
+        cout << "---------------------------------------------------" << endl;
+
+        cout << " [TRAFIC]    Densite max : " << rho[].max   << " veh/km2" << endl;
+    }
+    
+    /*
+    // Résolution Navier Stokes
+    [windUOld, windVOld, windWOld] = [windU, windV, windW];
+    NS;
 
     // Projection des variables trafic en 3D
     rho3D = rho;  
@@ -232,13 +246,32 @@ for (t = 0; t <= MM; t++) {
     phiOld = phi;  // Sauvegarde de phi^n
     pollution;     // Résoud et met à jour phi = phi^n+1
 
-    // Affichage
-    //if (t % 10 == 0) {
-        cout << "Temps: " << t*dt << " h | RhoMax: " << rho[].max << " | PhiMax: " << phi[].max << endl;
-        //plot(vrho, fill=1, wait=0, cmm="Vitesse 2D - t="+(t*dt)+" h");
-        //plot(rho, fill=1, wait=0, cmm="Trafic 2D - t="+(t*dt)+" h");
-        plot(phi, fill=1, wait=0, cmm="Pollution 3D - t="+(t*dt)+" h");
-    //}
- 
-}
+    if (t % 100 == 0 ) {
+        cout << "--- Sauvegarde et Affichage Medit (t = " << t*dt << " h) ---" << endl;
 
+        // --- 1. TRAFIC (2D) ---
+        savesol("densite_" + t + ".sol", Sh2, rho);
+        medit("Densite de Trafic", Sh2, rho, meditff="ffmedit"); // Décommenter si tu veux voir le trafic
+
+        // --- 2. POLLUTION (3D) ---
+        savesol("pollution_" + t + ".sol", Th, phi);
+        
+        // On lance Medit sur la pollution 3D
+        medit("Nuage de Pollution 3D", Th, phi, meditff="ffmedit");
+    }
+    
+        // --- AFFICHAGE CLAIR EN CONSOLE ---
+    cout << " PAS DE TEMPS : " << t << " / " << MM 
+        << " | TEMPS SIMULE : " << t*dt*3600 << " sec" << endl;
+
+    // On vérifie les 3 piliers de ta simulation
+    cout << " [VENT]      Vitesse max : " << windU[].max << " km/h" << endl;
+    cout << " [TRAFIC]    Densite max : " << rho[].max   << " veh/km2" << endl;
+    cout << " [POLLUTION] Conc. max   : " << phi[].max   << " kg/km2" << endl;
+
+    // Petit indicateur de progression
+    real progression = (real(t)/MM)*100;
+    cout << " Progression : [" << progression << "%]" << endl;
+    cout << "---------------------------------------------------" << endl;
+    cout << endl; // Saute une ligne pour le tour suivant*/
+    }
