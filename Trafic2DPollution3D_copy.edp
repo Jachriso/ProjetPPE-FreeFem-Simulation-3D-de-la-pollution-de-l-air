@@ -170,7 +170,7 @@ Vh2 n2 = dy(psi)/sqrt(dx(psi)^2+dy(psi)^2+1e-30);
 
 // Paramètre de temps
 int t;            // Compteur de pas 
-real dt = 0.002;  // Pas de temps en heure
+real dt = 0.001;  // Pas de temps en heure
 real T = 1.0;     // Durée totale = ici 1h
 int MM = T/dt;    // Nombre de pas (Utilisé dans la boucle for pour aller jusqu'au temps t max)
 
@@ -178,9 +178,9 @@ int MM = T/dt;    // Nombre de pas (Utilisé dans la boucle for pour aller jusqu
 real k = 1;           // Coeff de diffusion du trafic
 real vmax = 50.0;     // Vitesse max sur route vide 
 real rho0 = 1e-30;    // Densité initiale 
-real rhoMax = 400.0;  // Densité max = bouchon total   
-real c = 20.0;        // Utilisé pour calculer la vitesse  
-real fmax = 4200.0;   // Débit max à l'entrée 
+real rhoMax = 400.0;  // Densité max = bouchon total       // 20 000 - 21 000
+real c = 20.0;        // Utilisé pour calculer la vitesse  // 20 - 25
+real fmax = 4200.0;   // Débit max à l'entrée             //400 000
 
 // Paramètre de pollution  
 real phi0 = 0.0 ;       // Densité initiale
@@ -190,11 +190,13 @@ real eta = 3.16e-5;     // in kg/veh/h
 real nu = 1e-6;         // in kg/veh/km²
 
 // Paramètre du vent
-
 real RhoVent = 1.0;      // densite air
-real MuVent = 1.5e-5;    // viscosite cinematique (km^2/h)
-real uIn = 3;
-real vIn = 0;
+real MuVent = 1.5e-8;    // viscosite cinematique (km^2/h)
+
+real theta = -pi/4;
+real velocity = 7; // 2
+real uIn = velocity * cos(theta);  // ≈ 1.414 km/h
+real vIn = velocity * sin(theta);  // ≈ -1.414 km/h
 
 // Fonction de flux : Débit entrant similant une heure de pointe
 func real fluxEntree(real th) {
@@ -222,8 +224,7 @@ problem pollution(phi, phih) =
     + int3d(Th)(sigma * phi * phih)                                                // signma*phi*phih
     + int3d(Th)(mu*(dx(phi)*dx(phih) + dy(phi)*dy(phih) + dz(phi)*dz(phih)))       // mu·∇phi·∇phih
     - int3d(Th)((eta * rho3D + nu * FF3D) * phih)                                  // Source S = η·rho3D + ν·‖F‖
-    - int2d(Th, 11, 12)(phi*(windU*N.x + windV*N.y + windW*N.z)*phih);             // Condition de sortie        
-
+    - int2d(Th, 2, 13, 14, 15)(phi*(windU*N.x + windV*N.y + windW*N.z)*phih);
 
 // Modèle du vent : Navier-Stokes
 problem NS([windU, windV, windW, windP],[windUh, windVh, windWh, windPh]) =
@@ -241,8 +242,14 @@ problem NS([windU, windV, windW, windP],[windUh, windVh, windWh, windPh]) =
                 convect([windUOld,windVOld,windWOld], -dt, windUOld) * windUh
                 + convect([windUOld,windVOld,windWOld], -dt, windVOld) * windVh
                 + convect([windUOld,windVOld,windWOld], -dt, windWOld) * windWh ) )
-        + on(11, 12, windP=0)        // sortie droite 
-        ;
+        + on(11, 12, windP=0)       // sortie droite et bas
+        + on(14, 15, windU=uIn,     // entree gauche
+                     windV=vIn,
+                    windW=0.)
+        + on(13, windU=uIn,         // entree haut
+                    windV=vIn,
+                    windW=0.);
+                ;
 
 
 // Initialisation avant la boucle
