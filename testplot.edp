@@ -1,0 +1,31 @@
+// --- TEST ÉCHELLE MULTICOLORE (10 COULEURS) ---
+
+mesh Th = square(20, 20); 
+fespace Vh(Th, P1);
+Vh f = x; // Dégradé de 0 (gauche) à 1 (droite)
+
+// Palette avec 10 couleurs explicites [Teinte, Saturation, Valeur]
+real[int] palette10 = [
+    4.0/6.0, 1, 1,   // 1. Bleu foncé
+    3.0/6.0, 1, 1,   // 2. Cyan
+    2.5/6.0, 1, 1,   // 3. Turquoise / Vert d'eau
+    2.0/6.0, 1, 1,   // 4. Vert
+    1.5/6.0, 1, 1,   // 5. Vert pomme
+    1.0/6.0, 1, 1,   // 6. Jaune
+    0.6/6.0, 1, 1,   // 7. Orange
+    0.2/6.0, 1, 1,   // 8. Rouge-Orange
+    0.0/6.0, 1, 1,   // 9. ROUGE vif
+    5.2/6.0, 1, 1    // 10. ROSE / Magenta
+];
+
+// On définit les 11 frontières pour créer les 10 zones
+real[int] echelle = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+
+plot(f, 
+     fill=1, 
+     viso=echelle, 
+     hsv=palette10, 
+     value=1, 
+     wait=1,
+     cmm="Test 10 couleurs : du Bleu au Rose"
+);

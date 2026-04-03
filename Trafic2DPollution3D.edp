@@ -118,9 +118,9 @@ int MM = T/dt;    // Nombre de pas (Utilisé dans la boucle for pour aller jusqu
 real k = 1 ;         // Coeff de diffusion du trafic
 real vmax = 50.0;    // Vitesse max sur route vide 
 real rho0 = 1e-30;   // Densité initiale 
-real rhoMax = 900.0; // Densité max = bouchon total       // rhoMax=20000 et fmax=1000
-real c = 35.0;       // Utilisé pour calculer la vitesse   
-real fmax = 9000.0; // Débit max à l'entrée 
+real rhoMax = 900.0; // Densité max = bouchon total     
+real c = 20.0;       // Utilisé pour calculer la vitesse   
+real fmax = 9000.0;  // Débit max à l'entrée 
 
 // Paramètre de pollution  
 real sigma = 0.6e-2 ;         // Taux d'extinction du polluant 
@@ -213,7 +213,7 @@ for (t = 0; t <= MM; t++) {
     rhoOld = rho;   // Sauvegarde rho^n avant de calculer rho^n+1
     density;        // résoud et met à jour rho = rho^n+1     
     
-    if (t % 100 == 0 ) {
+    /*if (t % 100 == 0 ) {
         cout << "--- Sauvegarde et Affichage Medit (t = " << t*dt << " h) ---" << endl;
 
         real[int] viso1=[50,800];
@@ -229,9 +229,9 @@ for (t = 0; t <= MM; t++) {
         cout << "---------------------------------------------------" << endl;
 
         cout << " [TRAFIC]    Densite max : " << rho[].max   << " veh/km2" << endl;
-    }
+    }*/
     
-    /*
+    
     // Résolution Navier Stokes
     [windUOld, windVOld, windWOld] = [windU, windV, windW];
     NS;
@@ -246,7 +246,7 @@ for (t = 0; t <= MM; t++) {
     phiOld = phi;  // Sauvegarde de phi^n
     pollution;     // Résoud et met à jour phi = phi^n+1
 
-    if (t % 100 == 0 ) {
+    if (t % 20 == 0 ) {
         cout << "--- Sauvegarde et Affichage Medit (t = " << t*dt << " h) ---" << endl;
 
         // --- 1. TRAFIC (2D) ---
@@ -273,5 +273,5 @@ for (t = 0; t <= MM; t++) {
     real progression = (real(t)/MM)*100;
     cout << " Progression : [" << progression << "%]" << endl;
     cout << "---------------------------------------------------" << endl;
-    cout << endl; // Saute une ligne pour le tour suivant*/
+    cout << endl; // Saute une ligne pour le tour suivant
     }
