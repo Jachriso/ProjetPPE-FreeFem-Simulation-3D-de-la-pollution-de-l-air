@@ -1,0 +1,176 @@
+load "msh3"
+load "iovtk"
+load "medit"
+
+// PARAMÈTRES (adaptés de ta version 2D)
+real uMax = 10.;
+real Rho = 1.;
+real Mu = 1.;
+real T = 1.;
+real dt = 1.e-2;
+
+// Paramètres supplémentaires pour la 3D
+real nu = Mu/Rho;  // Viscosité cinématique
+real alpha = 1./dt;
+
+// MAILLAGE 3D
+int nn = 100;        // Qualité du maillage
+real L = 0.5;        // Longueur en x
+real D = 0.2;        // Hauteur en y
+real H = 0.03;        // Hauteur en z (NOUVEAU en 3D)
+
+// Labels pour la 3D
+int Wall = 1;       // Paroi (murs latéraux)
+int Inlet = 2;      // Entrée (face x=0)
+int Outlet = 3;     // Sortie (face x=L)
+int Ground = 4;     // Sol (face z=0)
+int Roof = 5;       // Toit (face z=H)
+
+// VENT FIXE A L'ENTREE
+real uInConst = 5.0;   // Vent à 5 m/s dans la direction x
+real vInConst = 0.0;   // Pas de vent en y
+real wInConst = 0.0;   // Pas de vent en z
+
+// BORDS 2D (comme dans ton code)
+border b1(t=0., 1.){x=L*t; y=0.; label=Wall;};      // Bas
+border b2(t=0., 1.){x=L; y=D*t; label=Outlet;};     // Droite
+border b3(t=0., 1.){x=L-L*t; y=D; label=Wall;};     // Haut
+border b4(t=0., 1.){x=0.; y=D-D*t; label=Inlet;};   // Gauche
+
+int nnL = max(2., L*nn);
+int nnD = max(2., D*nn);
+
+// Maillage 2D (la section transversale)
+mesh Th2 = buildmesh(b1(nnL) + b2(nnD) + b3(nnL) + b4(nnD));
+
+// Affichage du maillage 2D
+
+// EXTRUSION EN 3D
+int nnz = max(2., H*nn);  // Nombre de couches en z
+
+// Correspondance entre les arêtes 2D et les faces verticales 3D
+int[int] rmid = [Wall, Wall,     // Bord bas (y=0) -> Mur vertical
+                 Outlet, Outlet, // Bord droit (x=L) -> Sortie
+                 Wall, Wall,     // Bord haut (y=D) -> Mur vertical
+                 Inlet, Inlet];  // Bord gauche (x=0) -> Entrée
+
+// Faces horizontales
+int[int] rup = [0, Roof];     // Face du haut (z=H) -> Toit
+int[int] rdown = [0, Ground]; // Face du bas (z=0) -> Sol
+
+// Création du maillage 3D
+mesh3 Th = buildlayers(Th2, nnz,
+  zbound=[0, H],
+  labelmid=rmid,
+  reffaceup=rup,
+  reffacelow=rdown);
+
+cout << "Maillage 3D cree avec " << Th.nt << " tetraedres" << endl;
+cout << "Vent a l'entree : ux = " << uInConst << " m/s" << endl;
+cout << "                 uy = " << vInConst << " m/s" << endl;
+cout << "                 uz = " << wInConst << " m/s" << endl;
+
+// ESPACES D'ÉLÉMENTS FINIS
+// En 3D, on a 3 composantes de vitesse (ux, uy, uz)
+fespace VVh(Th, [P1, P1, P1, P1]);  // [ux, uy, uz, p]
+VVh [ux, uy, uz, p];
+VVh [upx, upy, upz, upp];  // Pour la convection (pas utilisé en 3D de la même façon)
+VVh [vx, vy, vz, q];
+
+// Macro pour la 3D
+macro grad(u) [dx(u), dy(u), dz(u)] //
+macro div(ux, uy, uz) (dx(ux)+dy(uy)+dz(uz)) //
+
+// Définition du problème SANS convection pour l'initialisation
+varf vNSinit ([ux, uy, uz, p], [vx, vy, vz, q]) =
+    int3d(Th)(
+          (Rho/dt) * (ux*vx + uy*vy + uz*vz)
+        + Mu * (grad(ux)'*grad(vx) + grad(uy)'*grad(vy) + grad(uz)'*grad(vz))
+        - p * div(vx, vy, vz)
+        - div(ux, uy, uz) * q
+        + 1e-10 * p * q
+    )
+    // PAS de terme de convection pour l'initialisation
+    + on(Inlet, ux=uInConst, uy=vInConst, uz=wInConst)
+    + on(Wall, ux=0., uy=0., uz=0.)
+    + on(Ground, ux=0., uy=0., uz=0.)
+    + on(Roof, ux=0., uy=0., uz=0.);
+
+// PROBLÈME DE NAVIER-STOKES EN 3D
+varf vNS ([ux, uy, uz, p], [vx, vy, vz, q]) =
+    // Terme instationnaire + diffusion + pression
+    int3d(Th)(
+          (Rho/dt) * (ux*vx + uy*vy + uz*vz)
+        + Mu * (grad(ux)'*grad(vx) + grad(uy)'*grad(vy) + grad(uz)'*grad(vz))
+        - p * div(vx, vy, vz)
+        - div(ux, uy, uz) * q
+        + 1e-10 * p * q  // Terme de stabilisation
+    )
+    // Terme de convection (méthode caractéristique)
+    - int3d(Th, optimize=1)(
+          (Rho/dt) * (
+              convect([upx, upy, upz], -dt, upx) * vx
+            + convect([upx, upy, upz], -dt, upy) * vy
+            + convect([upx, upy, upz], -dt, upz) * vz
+          )
+    )
+    // CONDITIONS AUX LIMITES
+    + on(Inlet, ux=uInConst, uy=vInConst, uz=wInConst)   // Entrée : profil parabolique
+    + on(Wall, ux=0., uy=0., uz=0.)        // Murs latéraux : adhérence
+    + on(Ground, ux=0., uy=0., uz=0.)      // Sol : adhérence
+    + on(Roof, ux=0., uy=0., uz=0.);       // Toit : adhérence (ou laisser libre)
+    // Note : À la sortie (Outlet), on n'impose rien (pression naturelle)
+
+// ========== ÉTAPE 1 : INITIALISATION SANS CONVECTION ==========
+cout << "Initialisation sans convection..." << endl;
+matrix Ainit;
+Ainit = vNSinit(VVh, VVh);
+set(Ainit, solver=sparsesolver);
+
+real[int] binit = vNSinit(0, VVh);
+ux[] = Ainit^-1 * binit;
+
+// Initialisation du champ convecté avec la solution
+[upx, upy, upz] = [ux, uy, uz];
+
+
+// ========== ÉTAPE 2 : BOUCLE PRINCIPALE AVEC CONVECTION ==========
+int nbiter = T / dt;
+cout << "Nombre d'iterations : " << nbiter << endl;
+
+// Boucle principale
+for (int i = 0; i < nbiter; i++) {
+    // Mise à jour du champ convecté
+
+    cout << "Iteration i = 0" << endl;
+
+    [upx, upy, upz] = [ux, uy, uz];
+    
+    // Reconstruction de la matrice et du second membre
+    matrix A = vNS(VVh, VVh);
+    set(A, solver=sparsesolver);
+    real[int] b = vNS(0, VVh);
+
+    // Résolution
+    cout << "Iteration " << i+1 << " - Resolution..." << endl;
+    ux[] = A^-1 * b;
+    
+    cout << "Iteration " << i+1 << " terminee, temps = " << (i+1)*dt << endl;
+    
+    // Visualisation optionnelle (toutes les 10 itérations)
+    if (i % 10 == 0 || i == nbiter-1) {
+        plot(Th, [ux, uy, uz], p, wait=0, value=1, fill=1);
+    }
+}
+
+/// Plot final
+plot(Th, [ux, uy, uz], p, wait=1, value=1, fill=1, cmm="Solution finale");
+
+// Afficher les vitesses max
+cout << "Vitesse ux max = " << ux[].max << " m/s" << endl;
+cout << "Vitesse uy max = " << uy[].max << " m/s" << endl;
+cout << "Vitesse uz max = " << uz[].max << " m/s" << endl;
+
+// EXPORT DES RÉSULTATS (optionnel)
+// Pour visualiser avec Paraview
+// savevtk("solution.vtk", Th, ux, uy, uz, p, dataname="Velocity Pressure");

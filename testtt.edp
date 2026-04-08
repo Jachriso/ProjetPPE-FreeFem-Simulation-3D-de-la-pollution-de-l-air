@@ -1,0 +1,209 @@
+load "msh3"
+load "iovtk"
+load "medit"
+
+real nu=0.01;
+real dt=0.3;
+real alpha=1./dt;
+real alpha2=sqrt(alpha);
+int nn=5;
+
+// ========== DIMENSIONS ==========
+real L = 0.5;        // Longueur (500m → 0.5)
+real l = 0.2;        // Largeur (200m → 0.2)
+real H = 0.02;       // Hauteur (20m → 0.02)
+
+// Route principale
+real roadWidth = 0.007, rueWidht=0.0035,  LRue = 0.0965;     // Largeur de la route (7m → 0.007)
+real roadYmin = (l - roadWidth)/2;   // Début de la route
+real roadYmax = (l + roadWidth)/2;   // Fin de la route
+real xDebRue = 0.375, xFinRue = xDebRue + rueWidht;
+
+
+// VENT A L'ENTREE
+real uInConst = 5.0;   // Vent à 5 m/s
+real vInConst = 0.0;
+real wInConst = 0.0;
+
+// ========== LABELS ==========
+int Mur = 1;           // Murs latéraux
+int Entree = 2;        // Entrée de la route (gauche)
+int Sortie = 3;        // Sortie de la route (droite)
+int Sol = 10;          // Sol
+int Toit = 11;         // Toit
+
+
+// --- 3. DEFINITION DES BORDURES (sens ANTI-HORAIRE) ---
+// 1. Bord BAS (y=0)
+border Bordbas(t=0, L){x=t; y=0; label=Mur;}
+border Borddroit(t=0, l){x=L; y=t; label=Sortie;}
+border Bordhaut(t=L, 0){x=t; y=l; label=Mur;}
+border Bordgauche(t=l, 0){x=0; y=t; label=Entree;}
+
+
+// Frontière de route
+border RouteHaut(t=L, 0){x=t; y=roadYmin; label=50;}                    // Haut de la route
+border RouteEntreeG(t=roadYmax, roadYmin){x=0; y=t; label=51;}               // Entrée Gauche route
+border RouteBasG(t=0, xDebRue){x=t; y=roadYmin; label=52;}                // Bas Gauche route
+border RouteRueG(t=0, LRue){x=xDebRue; y=roadYmin-t; label=53;}           // Bord gauche de la rue verticale
+border RueSortie(t=xDebRue, xFinRue){x=t; y=roadYmin-LRue; label=54;}// Sortie bas de la rue
+border RueD(t=0, LRue){x=xFinRue; y=(roadYmin-LRue)+t; label=55;}    // Bord droit de la rue verticale
+border BasD(t=xFinRue, L){x=t; y=roadYmin; label=56;}               // Bas Droite route
+border RouteSortieD(t=roadYmin, roadYmax){x=L; y=t; label=57;}              // Sortie principale Droite
+
+// ========== MAILLAGE 2D ==========
+int n = 100;
+
+mesh Th2 = buildmesh(
+    Bordbas(L*n) +
+    Borddroit(l*n) +
+    Bordhaut(L*n) +
+    Bordgauche(l*n)
+);
+
+
+// Extrusion en 3D
+int[int] rup=[0, Toit];      // Face du haut (z=H) -> Toit
+int[int] rdown=[0, Sol];  // Face du bas (z=0) -> Sol
+
+// Correspondance : les bords 2D deviennent des faces verticales 3D
+// Correspondance pour l'extrusion (8 bords)
+int[int] rmid = [
+  Mur,Mur,
+  Sortie, Sortie,
+  Mur, Mur,
+  Entree, Entree
+];
+
+int nnz = 6;  // Nombre de couches en z
+real zmin=0, zmax=H;
+
+mesh3 Th = buildlayers(Th2, nnz,
+  zbound=[zmin,zmax],
+  labelmid=rmid,
+  reffaceup=rup,
+  reffacelow=rdown);
+
+plot(Th);
+// Espaces d'éléments finis
+fespace Vh2(Th2,P2);  // Espace 2D pour les coupes (visualisation)
+Vh2 ux, uz, p2;
+ 
+fespace VVh(Th,[P23d,P23d,P23d,P13d]); // VVh : espace pour la vitesse (3 composantes) et la pression
+fespace Vh(Th,P23d);  // Vh : espace pour la vitesse seule (P2)
+fespace Ph(Th,P13d);  // Ph : espace pour la pression seule (P1)
+
+// Macros
+macro Grad(u) [dx(u),dy(u),dz(u)]        // 
+macro div(u1,u2,u3) (dx(u1)+dy(u2)+dz(u3)) //
+
+// ========== ÉQUATION DE STOKES (écoulement initial) ==========
+// Stokes = équation simplifiée où on ignore le terme de convection (inertie)
+// On l'utilise pour initialiser la solution
+// varf = variational form (forme variationnelle)
+// C'est la version mathématique de l'équation qu'on veut résoudre
+varf vStokes([u1,u2,u3,p],[v1,v2,v3,q]) = 
+  int3d(Th,qforder=3)( 
+            Grad(u1)'*Grad(v1) + Grad(u2)'*Grad(v2) + Grad(u3)'*Grad(v3)
+             - div(u1,u2,u3)*q 
+             - div(v1,v2,v3)*p 
+             + 1e-10*q*p ) 
+  + on(Entree, u1=uInConst, u2=vInConst, u3=wInConst)  // Vent à l'entrée
+  + on(Sol, u1=0, u2=0, u3=0)  // Sol
+  + on(Toit, u1=0, u2=0, u3=0);   // Toit
+
+
+// CONSTRUCTION ET RÉSOLUTION DE LA MATRICE (STOKES)
+// Une matrice en éléments finis représente le système linéaire
+// A * X = b, où :
+//   - A = matrice du système (taille = nombre de degrés de liberté)
+//   - X = vecteur des inconnues (les valeurs de u1,u2,u3,p)
+//   - b = second membre (termes de bord et forces)
+
+cout << "Construction matrice Stokes..." << endl;
+matrix A = vStokes(VVh, VVh);
+// vStokes(VVh, VVh) construit la matrice A en assemblant les intégrales
+
+cout << "Factorisation..." << endl;
+set(A, solver=sparsesolver);
+// sparsesolver = solveur pour matrices creuses (remplies de zéros)
+// C'est le solveur direct (LU) : décompose la matrice pour résoudre rapidement
+
+cout << "Resolution..." << endl;
+real[int] b = vStokes(0, VVh);
+// Construit le second membre (0 signifie "pas de fonction test particulière")
+
+VVh [u1,u2,u3,p];               // Déclare les variables solution
+VVh [X1,X2,X3,Xp];              // Variables pour la méthode caractéristique (convection)
+VVh [x1,x2,x3,xp] = [x,y,z,0];  // Coordonnées spatiales
+
+u1[] = A^-1 * b;
+// Résout le système : calcule la solution et la stocke dans u1, u2, u3, p
+// Le "[]" signifie qu'on manipule tout le vecteur (tous les degrés de liberté)
+
+
+// Visualisation de la solution initiale  -> // On extrait les valeurs sur une coupe (y=0.5)
+ux = u1(x, l/2, y);
+uz = u3(x, l/2, y);
+p2 = p(x, l/2, y);
+plot([ux, uz], p2, cmm="Coupe y = D/2 - Solution initiale", wait=1);
+
+
+// MÉTHODE CARACTÉRISTIQUE (pour la convection)
+// Ces macros servent à suivre les particules dans le temps 
+macro XX1() (x-u1*dt)//   //Nouvelle position en x après dt
+macro XX2() (y-u2*dt)//
+macro XX3() (z-u3*dt)//
+
+
+// PROBLÈME DE NAVIER-STOKES COMPLET (avec inertie)
+
+varf vNS([uu1,uu2,uu3,p],[v1,v2,v3,q]) = 
+  int3d(Th)( 
+            alpha*(uu1*v1+uu2*v2+uu3*v3) 
+            + nu*(Grad(uu1)'*Grad(v1) + Grad(uu2)'*Grad(v2) + Grad(uu3)'*Grad(v3))
+            - div(uu1,uu2,uu3)*q - div(v1,v2,v3)*p + 1e-10*q*p ) 
+  + on(Entree, uu1=uInConst, uu2=vInConst, uu3=wInConst)
+  + on(Sol, uu1=0, uu2=0, uu3=0)
+  + on(Toit, uu1=0, uu2=0, uu3=0)
+
+    // TERME DE CONVECTION (méthode caractéristique)
+  + int3d(Th, optimize=1)( alpha*( u1(XX1,XX2,XX3)*v1  
+                                 + u2(XX1,XX2,XX3)*v2  
+                                 + u3(XX1,XX2,XX3)*v3 ) );
+      // u1(XX1,XX2,XX3) = valeur de la vitesse à la position suivante
+
+cout << "Construction matrice Navier-Stokes..." << endl;
+A = vNS(VVh, VVh);
+cout << "Factorisation..." << endl;
+set(A, solver=sparsesolver);
+
+// ========== BOUCLE TEMPORELLE ==========
+real t = 0;
+int nbiter = 10;
+
+for(int i = 0; i < nbiter; ++i)
+{
+    t += dt;
+    cout << "Iteration " << i << " t = " << t << endl;
+    
+    // Mise à jour des positions pour la méthode caractéristique
+    X1[] = x1[] + u1[] * (-dt);
+    // On suit les particules vers l'arrière
+
+    // Construction du second membre
+    b = vNS(0, VVh);
+
+    // Résolution du système
+    u1[] = A^-1 * b;
+    
+    // Visualisation
+    ux = u1(x, l/2, y);
+    uz = u3(x, l/2, y);
+    p2 = p(x, l/2, y);
+    plot([ux, uz], p2, cmm="Coupe y = D/2, time = "+t, wait=0);
+    
+}
+
+// Visualisation finale
+plot([ux, uz], p2, cmm="Coupe y = D/2, time = "+t, wait=1);

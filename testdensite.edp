@@ -1,0 +1,128 @@
+load "msh3"
+load "iovtk"
+load "medit"
+verbosity = 0; // Désactive les messages "Solve" par défaut
+
+
+real LT = 0.50, lT = 0.2;                          // Domaine : 500m de long sur 200m de large
+real lRoute = 0.007, lRue = 0.0035, LRue = 0.0965;    // Route de 7m de large ; Rue de 3.5m de large
+real xDebRue = 0.375, xFinRue = xDebRue + lRue;     // Position de la rue
+real yBas = 0.0965, yHaut = yBas + lRoute;            // Position de la route
+
+border Haut(t=LT, 0){x=t; y=yHaut; label=50;}                    // Haut de la route
+border EntreeG(t=yHaut, yBas){x=0; y=t; label=51;}               // Entrée Gauche route
+border BasG(t=0, xDebRue){x=t; y=yBas; label=52;}                // Bas Gauche route
+border RueG(t=0, LRue){x=xDebRue; y=yBas-t; label=53;}           // Bord gauche de la rue verticale
+border RueSortie(t=xDebRue, xFinRue){x=t; y=yBas-LRue; label=54;}// Sortie bas de la rue
+border RueD(t=0, LRue){x=xFinRue; y=(yBas-LRue)+t; label=55;}    // Bord droit de la rue verticale
+border BasD(t=xFinRue, LT){x=t; y=yBas; label=56;}               // Bas Droite route
+border SortieD(t=yBas, yHaut){x=LT; y=t; label=57;} 
+
+// --- 3. GENERATION DES MAILLAGES ---
+
+int n = 4;
+
+// Maillage 2D de la route
+mesh ShRoute = buildmesh(Haut(40*n) + EntreeG(5*n) + BasG(15*n) + RueG(8*n) + 
+                    RueSortie(3*n) + RueD(8*n) + BasD(15*n) + SortieD(5*n));
+
+// --- 4. ESPACES DE FONCTIONS ---
+// Espace de fonction d'éléments finis P1 (linéaires) pour la densité du trafic
+fespace Vh2(ShRoute, P1); // Trafic en 2D
+Vh2 rho;     // Densité du trafic ρ(x,y,t) en veh/km² (Variable principale)
+Vh2 rhoOld;  // Densité au pas de temps précédent 
+Vh2 rhoh;    // Fonction de test pour la formulation faible
+Vh2 vx, vy;  // Composantes x et y de la vitesse des véhicules (km/h)
+Vh2 vrho;    // Vitesse scalaire des véhicules (km/h)
+
+
+// --- 5. CALCUL DE LA DIRECTION DU TRAFIC ---
+fespace Wh2(ShRoute, P2);
+Wh2 psi, psih;
+problem Laplace(psi, psih) = int2d(ShRoute)(dx(psi)*dx(psih) + dy(psi)*dy(psih)) 
+                            + int1d(ShRoute, 51)(psih) 
+                            + on(54, 57, psi=0);
+Laplace;
+
+Vh2 n1 = dx(psi)/sqrt(dx(psi)^2+dy(psi)^2+1e-30);
+Vh2 n2 = dy(psi)/sqrt(dx(psi)^2+dy(psi)^2+1e-30);
+
+// --- 6. PARAMÈTRES PHYSIQUES ---
+
+// Paramètre de temps
+int t;            // Compteur de pas 
+real dt = 0.002;  // Pas de temps en heure
+real T = 1.0;     // Durée totale = ici 1h
+int MM = T/dt;    // Nombre de pas (Utilisé dans la boucle for pour aller jusqu'au temps t max)
+
+// Paramètre de trafic 
+real k = 1;           // Coeff de diffusion du trafic
+real vmax = 50.0;     // Vitesse max sur route vide 
+real rho0 = 1e-30;    // Densité initiale 
+real rhoMax = 20000.0;  // Densité max = bouchon total       // 20 000 - 21 000
+real c = 20;        // Utilisé pour calculer la vitesse  // 20 - 25             //28.5, 20000, 250000
+real fluxmax = 211000.0;   // Débit max à l'entrée             //400 000
+
+// Fonction de flux : Débit entrant similant une heure de pointe
+func real fluxEntree(real th) {
+    if (th <= 0.2) return fluxmax * 5*th;              // 0 -> fmax
+    if (th <= 0.4) return fluxmax * 1;                 // fmax
+    if (th <= 0.6) return fluxmax * (-3*(th-0.6)+0.4); // fmax -> 40% de fmax
+    return fluxmax * 0.4;                              // 40% de fmax
+} 
+
+
+// --- 7. FORMULATION VARIATIONNELLE ---
+
+// Modèle de trafic 
+problem density(rho, rhoh) = 
+    int2d(ShRoute)(rho * rhoh / dt)                                    // rho*rhoh / dt
+    - int2d(ShRoute)(convect([vx, vy], -dt, rhoOld) * rhoh / dt)       // - (rhoOld o X^n * rhoh) / dt
+    + int2d(ShRoute)(k*(dx(rho)*dx(rhoh) + dy(rho)*dy(rhoh)))          // k·∇rho·∇rhoh
+    + int2d(ShRoute)(rho * (dx(vx) + dy(vy)) * rhoh)                   // rho·(∇·v)·rhoh
+    - int1d(ShRoute, 51)(fluxEntree(t*dt) * rhoh)                       // Condition d'entrée fin*rhoh
+    - int1d(ShRoute, 51)(rho * (vx*N.x + vy*N.y) * rhoh);               // Suite condition d'entrée rho·(v·n)·rhoh
+
+rho = rho0;
+
+
+// --- 8. BOUCLE PRINCIPALE ---
+
+for (t = 0; t <= MM; t++) {
+    // Calcul de la vitesse  
+
+
+    rho = max(rho, rho0);  // evite division par zero
+    vrho = vmax * (1.0 - exp((c/vmax) * (1.0 - rhoMax/rho))); 
+    vrho = max(0.0, min(vmax, vrho));
+
+    // Décomposition de la vitesse scalaire en composantes 2D (Laplace)
+    vx = vrho * n1; 
+    vy = vrho * n2;
+
+
+    // Résolution de la densité du trafic (2D)
+    rhoOld = rho;   // Sauvegarde rho^n avant de calculer rho^n+1
+    density;        // résoud et met à jour rho = rho^n+1
+
+     // SECURISATION OBLIGATOIRE
+    rho = max(rho, 0.0);
+    rho = min(rho, rhoMax);   // empeche NaN si rho > rhoMax
+
+        if (t % 20 == 0 ) {
+        cout << " PAS DE TEMPS : " << t << " / " << MM 
+            << " | TEMPS SIMULE : " << t*dt*3600 << " sec" << endl;
+
+        //cout << " [VENT]      Vitesse max : " << windU[].max << " km/h" << endl;
+        cout << " [TRAFIC]    Densite max : " << rho[].max   << " veh/km2" << endl;
+        //cout << " [POLLUTION] Conc. max   : " << phi[].max   << " kg/km2" << endl;
+
+        real progression = (real(t)/MM)*100;
+        cout << " Progression : [" << progression << "%]" << endl;
+        cout << "---------------------------------------------------" << endl;
+        cout << endl; 
+    }
+
+    }
+
+

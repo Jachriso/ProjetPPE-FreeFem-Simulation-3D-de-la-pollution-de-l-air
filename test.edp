@@ -1,0 +1,200 @@
+load "msh3"
+load "iovtk"
+load "medit"
+verbosity = 0; // Désactive les messages "Solve" par défaut
+
+// Domaine quartier : 500m × 200m en km
+real LT = 0.500;   // longueur quartier
+real lT = 0.200;   // largeur quartier
+
+// Route principale : 7m de large sur 500m
+real lRoute = 0.007;
+
+// Position de la route (centrée verticalement dans le quartier)
+real yBas  = (lT - lRoute) / 2.;   // ≈ 0.0965 km
+real yHaut = yBas + lRoute;         // ≈ 0.1035 km
+
+// Rue perpendiculaire : 3m de large, part à x=375m vers le bas
+real lRue  = 0.003;                 // largeur rue 3m
+real xRue  = 0.375;                 // position intersection
+real xDebRue = xRue;
+real xFinRue = xRue + lRue;         // = 0.378 km
+
+// La rue va de yBas jusqu'en bas du quartier (y=0)
+real LRue = yBas;                   // longueur rue = yBas ≈ 0.0965 km
+
+// Route principale
+border Haut    (t=LT, 0)    {x=t;       y=yHaut; label=1;}  // haut route
+border EntreeG (t=yHaut,yBas){x=0;      y=t;     label=2;}  // entree gauche
+border BasG    (t=0,xDebRue) {x=t;      y=yBas;  label=3;}  // bas gauche route
+border RueG    (t=0,LRue)    {x=xDebRue;y=yBas-t;label=4;}  // bord gauche rue
+border RueSortie(t=xDebRue,xFinRue){x=t;y=0;     label=5;}  // bas de la rue
+border RueD    (t=0,LRue)    {x=xFinRue;y=t;     label=6;}  // bord droit rue
+border BasD    (t=xFinRue,LT){x=t;      y=yBas;  label=7;}  // bas droite route
+border SortieD (t=yBas,yHaut){x=LT;    y=t;     label=8;}  // sortie droite
+
+// Quartier exterieur
+border b1a(t=0,xDebRue)  {x=t;  y=0;   label=9;}   // bas gauche
+border b1b(t=xFinRue,LT) {x=t;  y=0;   label=10;}  // bas droite
+border b2a(t=0,yBas)     {x=LT; y=t;   label=11;}  // droite bas
+border b2b(t=yHaut,lT)   {x=LT; y=t;   label=12;}  // droite haut
+border b3 (t=LT,0)       {x=t;  y=lT;  label=13;}  // haut quartier
+border b4a(t=lT,yHaut)   {x=0;  y=t;   label=14;}  // gauche haut
+border b4b(t=yBas,0)     {x=0;  y=t;   label=15;}  // gauche bas
+
+// --- BORDURES EXTÉRIEURES ---
+border Bas(t=0, LT) { x=t; y=0; label=9; }
+border Droite(t=0, lT) { x=LT; y=t; label=12; }
+border Haut(t=LT, 0) { x=t; y=lT; label=13; }
+border Gauche(t=lT, 0) { x=0; y=t; label=15; }
+
+// --- BLOCS DU HAUT (H1, H2, H3) ---
+border BatH1(t=0, 1) { 
+    real x1=0.05, x2=0.12, y1=0.13, y2=0.17;
+    if(t<0.25) {x=x1+t*4*(x2-x1); y=y1;} else if(t<0.5) {x=x2; y=y1+(t-0.25)*4*(y2-y1);}
+    else if(t<0.75) {x=x2-(t-0.5)*4*(x2-x1); y=y2;} else {x=x1; y=y2-(t-0.75)*4*(y2-y1);}
+    label=20; 
+}
+border BatH2(t=0, 1) { 
+    real x1=0.20, x2=0.27, y1=0.13, y2=0.17;
+    if(t<0.25) {x=x1+t*4*(x2-x1); y=y1;} else if(t<0.5) {x=x2; y=y1+(t-0.25)*4*(y2-y1);}
+    else if(t<0.75) {x=x2-(t-0.5)*4*(x2-x1); y=y2;} else {x=x1; y=y2-(t-0.75)*4*(y2-y1);}
+    label=21; 
+}
+border BatH3(t=0, 1) { 
+    real x1=0.40, x2=0.47, y1=0.13, y2=0.17;
+    if(t<0.25) {x=x1+t*4*(x2-x1); y=y1;} else if(t<0.5) {x=x2; y=y1+(t-0.25)*4*(y2-y1);}
+    else if(t<0.75) {x=x2-(t-0.5)*4*(x2-x1); y=y2;} else {x=x1; y=y2-(t-0.75)*4*(y2-y1);}
+    label=22; 
+}
+
+// --- BLOCS DU BAS (BG1, BG2, BD1) ---
+border BatBG1(t=0, 1) { 
+    real x1=0.05, x2=0.15, y1=0.03, y2=0.07;
+    if(t<0.25) {x=x1+t*4*(x2-x1); y=y1;} else if(t<0.5) {x=x2; y=y1+(t-0.25)*4*(y2-y1);}
+    else if(t<0.75) {x=x2-(t-0.5)*4*(x2-x1); y=y2;} else {x=x1; y=y2-(t-0.75)*4*(y2-y1);}
+    label=23; 
+}
+border BatBG2(t=0, 1) { 
+    real x1=0.22, x2=0.32, y1=0.03, y2=0.07;
+    if(t<0.25) {x=x1+t*4*(x2-x1); y=y1;} else if(t<0.5) {x=x2; y=y1+(t-0.25)*4*(y2-y1);}
+    else if(t<0.75) {x=x2-(t-0.5)*4*(x2-x1); y=y2;} else {x=x1; y=y2-(t-0.75)*4*(y2-y1);}
+    label=24; 
+}
+border BatBD1(t=0, 1) { 
+    real x1=0.41, x2=0.48, y1=0.03, y2=0.07;
+    if(t<0.25) {x=x1+t*4*(x2-x1); y=y1;} else if(t<0.5) {x=x2; y=y1+(t-0.25)*4*(y2-y1);}
+    else if(t<0.75) {x=x2-(t-0.5)*4*(x2-x1); y=y2;} else {x=x1; y=y2-(t-0.75)*4*(y2-y1);}
+    label=25; 
+}
+
+int n = 4; // Densité de maillage sécurisée
+
+// --- MAILLAGE 2D DU BAS (avec trous) ---
+mesh Th2bas = buildmesh(
+    Bas(50*n) + Droite(20*n) + Haut(50*n) + Gauche(20*n)
+);
+
+// --- MAILLAGE 2D DU HAUT (plein) ---
+mesh Th2haut = buildmesh(
+    Bas(50*n) + Droite(20*n) + Haut(50*n) + Gauche(20*n)
+);
+
+plot(Th2bas, wait=1); // Pour vérifier visuellement la topologie
+plot(Th2haut, wait=1); // Pour vérifier visuellement la topologie
+
+real Hbat = 0.02; 
+real Hciel = 0.03; 
+
+// 3. Maillage 3D avec les vecteurs explicites
+mesh3 Thbas = buildlayers(Th2bas, 6, zbound=[0, Hbat]);
+mesh3 Thhaut = buildlayers(Th2haut, 3, zbound=[Hbat, Hciel]);
+mesh3 Th = Thbas ;
+
+plot(Th,wait=1);
+
+// Fespace
+fespace Zh(Th, [P13d, P13d, P13d]);  // P2 3D pour vitesse   // Tester en P13D
+fespace Ph(Th, P13d);                 // P1 3D pour pression
+
+Zh [windU, windV, windW];             // vent courant
+Zh [windUOld, windVOld, windWOld];    // vent precedent (pour convect)
+Zh [windUh, windVh, windWh];          // fonctions test
+Ph windP, windPh;
+
+
+// Paramètre de temps
+int t;            // Compteur de pas 
+real dt = 0.002;  // Pas de temps en heure
+real T = 1.0;     // Durée totale = ici 1h
+int MM = T/dt;    // Nombre de pas (Utilisé dans la boucle for pour aller jusqu'au temps t max)
+
+// Paramètre du vent
+real RhoVent = 1.0;      // densite air
+real MuVent =  0.01;    // viscosite cinematique (km^2/h)  
+
+real theta = -pi/4;
+real velocity = 3; 
+real uIn = velocity * cos(theta);  // ≈ 1.414 km/h
+real vIn = velocity * sin(theta);  // ≈ -1.414 km/h
+real wIn = 0.3;
+
+problem NS([windU, windV, windW, windP],[windUh, windVh, windWh, windPh]) =
+        int3d(Th)( 
+            (RhoVent/dt) * ( windU*windUh + windV*windVh + windW*windWh )             // Terme instationnaire : Rho/dt * (u - u_old∘X) * v
+            + MuVent * (                                                              // Diffusion visqueuse : Mu * grad(u):grad(v)
+                dx(windU)*dx(windUh) + dy(windU)*dy(windUh) + dz(windU)*dz(windUh)
+              + dx(windV)*dx(windVh) + dy(windV)*dy(windVh) + dz(windV)*dz(windVh)
+              + dx(windW)*dx(windWh) + dy(windW)*dy(windWh) + dz(windW)*dz(windWh) )
+            - windP *(dx(windUh) + dy(windVh) + dz(windWh))                            // Pression : -p * div(v)
+            - (dx(windU) + dy(windV) + dz(windW)) * windPh                             // Continuite : -div(u) * q
+            )
+        - int3d(Th)(                                                        // Rho/dt * u_old∘X * v
+            (RhoVent/dt) * ( 
+                convect([windUOld,windVOld,windWOld], -dt, windUOld) * windUh
+              + convect([windUOld,windVOld,windWOld], -dt, windVOld) * windVh
+              + convect([windUOld,windVOld,windWOld], -dt, windWOld) * windWh ) )
+            // --- Stabilisation légère ---
+        + on(13, windU=uIn, windV=vIn,windW=wIn) // entree gauche
+        + on(15, windU=uIn, windV=vIn,windW=wIn) // entree gauche
+        + on(9,  12, windP=0)                          // sorties
+        ;
+
+cout << "Label 9  : " << int2d(Th, 9)(1.)  << endl;
+cout << "Label 12 : " << int2d(Th, 12)(1.) << endl;
+cout << "Label 13 : " << int2d(Th, 13)(1.) << endl;
+cout << "Label 15 : " << int2d(Th, 15)(1.) << endl;
+cout << "Label 1  : " << int2d(Th, 1)(1.)  << endl;  // sol
+cout << "Label 2  : " << int2d(Th, 2)(1.)  << endl;  // toit
+
+problem Vent([windU, windV, windW, windP],[windUh, windVh, windWh, windPh]) =
+    int3d(Th)(
+        MuVent*(
+            dx(windU)*dx(windUh) + dy(windU)*dy(windUh) + dz(windU)*dz(windUh)
+          + dx(windV)*dx(windVh) + dy(windV)*dy(windVh) + dz(windV)*dz(windVh)
+          + dx(windW)*dx(windWh) + dy(windW)*dy(windWh) + dz(windW)*dz(windWh)
+        )
+        - windP*(dx(windUh)+dy(windVh)+dz(windWh))
+        - (dx(windU)+dy(windV)+dz(windW))*windPh
+    )
+    + on(12, windP=0)          // UNE SEULE condition de pression
+    + on(15, windU=uIn, windV=vIn, windW=0.)  // entree gauche seulement
+    ;
+
+
+// Initialisation avant la boucle
+[windU, windV, windW] = [uIn,vIn,wIn];
+[windUOld, windVOld, windWOld] = [windU, windV, windW];
+
+
+for (t = 0; t <= MM; t++) {
+    [windUOld, windVOld, windWOld] = [windU, windV, windW];
+    //NS;
+    Vent;
+
+    cout << " PAS DE TEMPS : " << t << " / " << MM 
+            << " | TEMPS SIMULE : " << t*dt*3600 << " sec" << endl;
+    cout << " [VENT]      Vitesse max : " << windU[].max << " km/h" << endl;
+      
+
+}

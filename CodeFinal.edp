@@ -169,7 +169,6 @@ Vh2 n2 = dy(psi)/sqrt(dx(psi)^2+dy(psi)^2+1e-30);
 
 // --- 6. PARAMÈTRES PHYSIQUES ---
 
-// Paramètre de temps
 int t;            // Compteur de pas 
 real dt = 0.002;  // Pas de temps en heure
 real T = 1.0;     // Durée totale = ici 1h
@@ -180,8 +179,9 @@ real k = 1;           // Coeff de diffusion du trafic
 real vmax = 50.0;     // Vitesse max sur route vide 
 real rho0 = 1e-30;    // Densité initiale 
 real rhoMax = 20000.0;  // Densité max = bouchon total       // 20 000 - 21 000
-real c = 20;        // Utilisé pour calculer la vitesse  // 20 - 25             //28.5, 20000, 250000
-real fluxmax = 211000.0;   // Débit max à l'entrée             //400 000
+real c = 22;        // Utilisé pour calculer la vitesse  // 20 - 25             //28.5, 20000, 250000
+real fluxmax = 220000.0;   // Débit max à l'entrée             //400 000
+
 
 // Paramètre de pollution  
 real phi0 = 0.0 ;       // Densité initiale
@@ -255,7 +255,6 @@ problem NS([windU, windV, windW, windP],[windUh, windVh, windWh, windPh]) =
 // Initialisation avant la boucle
 [windU, windV, windW] = [uIn,vIn,wIn];
 [windUOld, windVOld, windWOld] = [windU, windV, windW];
-rho = rho0;
 phi = phi0;
 
 
@@ -271,6 +270,7 @@ for (t = 0; t <= MM; t++) {
     // Décomposition de la vitesse scalaire en composantes 2D (Laplace)
     vx = vrho * n1; 
     vy = vrho * n2;
+
 
     // Résolution de la densité du trafic (2D)
     rhoOld = rho;   // Sauvegarde rho^n avant de calculer rho^n+1
